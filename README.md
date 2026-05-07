@@ -53,4 +53,4 @@ rufree/
 -   Wire up the frontend to call the `createPost` Cloud Function.
 -   Add real-time updates to the `HomeScreen` using Firestore listeners.
 -   Implement Firestore security rules for `users` and `ports` collections.
--   Add user profile management (editing bio, interests, etc.).root@DESKTOP-8Q1JHRN:/home/jonas/.openclaw/workspace/rufree#
+-   Add user profile management (editing bio, interests, etc.).
