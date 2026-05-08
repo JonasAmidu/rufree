@@ -1,27 +1,59 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  FlatList,
   Image,
+  Modal,
   RefreshControl,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
-  TouchableOpacity,
-  View,
-  Modal,
   TextInput,
-  Switch
+  TouchableOpacity,
+  View
 } from 'react-native';
+import * as Location from 'expo-location';
 import { signOut } from 'firebase/auth';
-import { collection, query, orderBy, limit, where, getDocs, addDoc, updateDoc, doc, arrayUnion, arrayRemove } from 'firebase/firestore';
+import ActivityComposer from '../components/activity/ActivityComposer';
+import EditProfileScreen from './EditProfileScreen';
+import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { auth, db } from '../firebase/config';
-import { fetchActivities, createActivity, likeActivity, unlikeActivity } from '../utils/activityFeed';
+import {
+  calculateDistanceKm,
+  createActivity,
+  enrichActivities,
+  filterActivities,
+  joinActivity,
+  leaveActivity,
+  likeActivity,
+  subscribeToActivities,
+  unlikeActivity
+} from '../utils/activityFeed';
+
+const RADIUS_OPTIONS = [2, 5, 10, 25];
+
+const ACTIVITY_EMOJIS = {
+  coffee: '☕',
+  walk: '🚶',
+  running: '🏃',
+  gym: '🏋️',
+  hike: '🥾',
+  brunch: '🥐',
+  dinner: '🍽️',
+  live: '🎵',
+  football: '⚽',
+  tennis: '🎾',
+  board: '🎲',
+  cinema: '🎬',
+  gaming: '🎮',
+  study: '📚',
+  co: '💻'
+};
 
 const formatDate = (value) => {
   if (!value) {
-    return 'Not specified';
+    return 'Pick a time';
   }
 
   if (typeof value.toDate === 'function') {
@@ -32,845 +64,1483 @@ const formatDate = (value) => {
     return value.toLocaleString();
   }
 
-  return 'Not specified';
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? 'Pick a time' : parsed.toLocaleString();
 };
 
-const HomeScreen = ({ user }) => {
-  const [posts, setPosts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [showCreatePostModal, setShowCreatePostModal] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
-  const [newActivity, setNewActivity] = useState('');
-  const [newLocation, setNewLocation] = useState('');
-  const [newDate, setNewDate] = useState('');
-  const [newTime, setNewTime] = useState('');
-  const [isUrgent, setIsUrgent] = useState(false);
-  const [filterTrending, setFilterTrending] = useState(false);
-  const [filterToday, setFilterToday] = useState(false);
-  const [filterWeekend, setFilterWeekend] = useState(false);
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [categories, setCategories] = useState(['All', 'Sports', 'Arts', 'Food', 'Learning', 'Social', 'Outdoor', 'Other']);
-  const [userLikes, setUserLikes] = useState(new Set()); // Track which posts the user has liked
+const getActivityEmoji = (label = '') => {
+  const normalized = label.toLowerCase();
+  const entry = Object.entries(ACTIVITY_EMOJIS).find(([key]) => normalized.includes(key));
+  return entry ? entry[1] : '✨';
+};
 
-  // Enhanced fetch function with filtering
-  const fetchPosts = async () => {
-    try {
-      let q = collection(db, 'posts');
-      
-      // Apply filters
-      const conditions = [];
-      
-      if (filterTrending) {
-        // For trending, we'll sort by likes (we'll implement this after fetching)
-        // This is a simplified version - in production you might want to use Firebase queries better
-      }
-      
-      if (filterToday) {
-        const today = new Date();
-        today.setHours(0, 0, 0, 0);
-        conditions.push(where('startTime', '>=', today));
-      }
-      
-      if (filterWeekend) {
-        const now = new Date();
-        const day = now.getDay();
-        const diffToSaturday = (day === 0) ? 1 : ((day === 6) ? 0 : 6 - day);
-        const saturday = new Date(now);
-        saturday.setDate(now.getDate() + diffToSaturday);
-        saturday.setHours(0, 0, 0, 0);
-        const sunday = new Date(saturday);
-        sunday.setDate(saturday.getDate() + 1);
-        conditions.push(where('startTime', '>=', saturday));
-        conditions.push(where('startTime', '<', sunday));
-      }
-      
-      // Apply category filter (if implemented in your data model)
-      // if (selectedCategory !== 'All') {
-      //   conditions.push(where('category', '==', selectedCategory));
-      // }
-      
-      if (conditions.length > 0) {
-        q = query(collection(db, 'posts'), ...conditions);
-      }
-      
-      // Order by most recent first
-      q = query(q, orderBy('createdAt', 'desc'));
-      
-      const querySnapshot = await getDocs(q);
-      const fetchedPosts = [];
-      
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-        fetchedPosts.push({
-          id: doc.id,
-          ...data,
-          // Ensure these fields exist
-          interestedUsers: data.interestedUsers || [],
-          likes: data.likes || 0,
-          likedBy: data.likedBy || []
-        });
-      });
-      
-      // Sort by likes if trending filter is active
-      if (filterTrending) {
-        fetchedPosts.sort((a, b) => (b.likes || 0) - (a.likes || 0));
-      }
-      
-      setPosts(fetchedPosts);
-      
-      // Track which posts the current user has liked
-      const userLikesSet = new Set();
-      fetchedPosts.forEach(post => {
-        if (post.likedBy && Array.isArray(post.likedBy) && post.likedBy.includes(user.uid)) {
-          userLikesSet.add(post.id);
+const clamp = (value, min, max) => Math.min(Math.max(value, min), max);
+
+const projectPointToMap = (origin, location, radiusKm) => {
+  if (
+    !origin ||
+    !location ||
+    typeof origin.latitude !== 'number' ||
+    typeof origin.longitude !== 'number' ||
+    typeof location.latitude !== 'number' ||
+    typeof location.longitude !== 'number'
+  ) {
+    return null;
+  }
+
+  const kmPerLatDegree = 111;
+  const kmPerLonDegree =
+    111 * Math.cos((origin.latitude * Math.PI) / 180) || 111;
+  const deltaXKm = (location.longitude - origin.longitude) * kmPerLonDegree;
+  const deltaYKm = (origin.latitude - location.latitude) * kmPerLatDegree;
+  const safeRadius = Math.max(radiusKm, 1);
+  const maxOffset = 38;
+
+  return {
+    left: 50 + clamp((deltaXKm / safeRadius) * maxOffset, -maxOffset, maxOffset),
+    top: 50 + clamp((deltaYKm / safeRadius) * maxOffset, -maxOffset, maxOffset)
+  };
+};
+
+const HomeScreen = ({ user, userProfile }) => {
+  const [activities, setActivities] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [userLikes, setUserLikes] = useState(new Set());
+  const [userJoinedActivities, setUserJoinedActivities] = useState(new Set());
+  const [radiusKm, setRadiusKm] = useState(10);
+  const [searchText, setSearchText] = useState('');
+  const [onlyAvailableNow, setOnlyAvailableNow] = useState(true);
+  const [onlyMatchingInterests, setOnlyMatchingInterests] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [activitiesReady, setActivitiesReady] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [locationMessage, setLocationMessage] = useState('Checking your nearby radius...');
+  const [userLocation, setUserLocation] = useState(null);
+
+  const favoriteActivities = userProfile?.favoriteActivities || [];
+
+  const nearbyUsers = useMemo(() => {
+    if (!userLocation) {
+      return [];
+    }
+
+    return allUsers
+      .filter((person) => person.uid && person.uid !== user.uid)
+      .map((person) => {
+        const distanceKm = calculateDistanceKm(userLocation, person.location);
+        const sharedInterests = favoriteActivities.filter((interest) =>
+          Array.isArray(person.favoriteActivities) ? person.favoriteActivities.includes(interest) : false
+        );
+
+        return {
+          id: person.id,
+          uid: person.uid,
+          displayName: person.displayName || 'RuFree user',
+          photoUrl: person.photoUrl || '',
+          bio: person.bio || '',
+          favoriteActivities: person.favoriteActivities || [],
+          sharedInterests,
+          distanceKm,
+          distanceLabel:
+            typeof distanceKm === 'number' ? `${distanceKm.toFixed(1)} km away` : 'Near your area',
+          location: person.location
+        };
+      })
+      .filter((person) => typeof person.distanceKm === 'number' && person.distanceKm <= radiusKm)
+      .sort((left, right) => left.distanceKm - right.distanceKm);
+  }, [allUsers, favoriteActivities, radiusKm, user.uid, userLocation]);
+
+  const nearbyUsersById = useMemo(
+    () =>
+      allUsers.reduce((accumulator, currentUser) => {
+        accumulator[currentUser.uid] = currentUser;
+        return accumulator;
+      }, {}),
+    [allUsers]
+  );
+
+  const enrichedActivities = useMemo(
+    () =>
+      enrichActivities(activities, {
+        currentLocation: userLocation,
+        favoriteActivities,
+        nearbyUsersById
+      }),
+    [activities, userLocation, favoriteActivities, nearbyUsersById]
+  );
+
+  const visibleActivities = useMemo(
+    () =>
+      filterActivities(enrichedActivities, {
+        radiusKm,
+        searchText,
+        onlyMatching: onlyMatchingInterests,
+        onlyAvailableNow
+      }),
+    [enrichedActivities, radiusKm, searchText, onlyMatchingInterests, onlyAvailableNow]
+  );
+
+  const availableNowCount = visibleActivities.filter((activity) => activity.availableNow).length;
+  const mapPins = useMemo(() => {
+    if (!userLocation) {
+      return [];
+    }
+
+    const peoplePins = nearbyUsers
+      .slice(0, 6)
+      .map((person) => {
+        const point = projectPointToMap(userLocation, person.location, radiusKm);
+        if (!point) {
+          return null;
         }
+
+        return {
+          id: `person-${person.uid}`,
+          label: person.displayName,
+          top: point.top,
+          left: point.left,
+          tone: 'person',
+          glyph: person.displayName.charAt(0).toUpperCase()
+        };
+      })
+      .filter(Boolean);
+
+    const activityPins = visibleActivities
+      .slice(0, 6)
+      .map((activity) => {
+        const point = projectPointToMap(userLocation, activity.location, radiusKm);
+        if (!point) {
+          return null;
+        }
+
+        return {
+          id: `activity-${activity.id}`,
+          label: activity.activity || 'Activity',
+          top: point.top,
+          left: point.left,
+          tone: 'activity',
+          glyph: getActivityEmoji(activity.activity)
+        };
+      })
+      .filter(Boolean);
+
+    return [...peoplePins, ...activityPins].slice(0, 10);
+  }, [nearbyUsers, radiusKm, userLocation, visibleActivities]);
+
+  const profileReady = Boolean(
+    userProfile?.displayName &&
+      userProfile?.bio &&
+      Array.isArray(favoriteActivities) &&
+      favoriteActivities.length > 0
+  );
+  const debugRows = [
+    { label: 'Signed in', value: user.email || user.uid },
+    { label: 'Profile ready', value: profileReady ? 'Yes' : 'Not yet' },
+    { label: 'Location', value: userLocation ? 'Detected' : 'Missing' },
+    { label: 'Radius', value: `${radiusKm} km` },
+    { label: 'Nearby people', value: String(nearbyUsers.length) },
+    { label: 'Visible activities', value: String(visibleActivities.length) },
+    { label: 'Available now', value: String(availableNowCount) }
+  ];
+
+  const requestLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+
+      if (status !== 'granted') {
+        setLocationMessage('Location is off. We’re showing broader suggestions instead.');
+        return null;
+      }
+
+      const current = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced
       });
-      setUserLikes(userLikesSet);
+
+      const location = {
+        latitude: current.coords.latitude,
+        longitude: current.coords.longitude
+      };
+
+      setUserLocation(location);
+      setLocationMessage(`Showing people and activities within ${radiusKm} km.`);
+
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          location,
+          locationUpdatedAt: new Date()
+        },
+        { merge: true }
+      );
+
+      return location;
     } catch (error) {
-      console.error('Error fetching posts:', error);
-      Alert.alert('Error', 'Failed to load activities. Please try again later.');
+      console.error('Location setup error', error);
+      setLocationMessage('We could not update your location, but you can still browse activities.');
+      return null;
+    }
+  };
+
+  useEffect(() => {
+    const unsubscribeActivities = subscribeToActivities(
+      db,
+      (fetchedActivities) => {
+        setActivities(fetchedActivities);
+
+        const liked = new Set();
+        const joined = new Set();
+
+        fetchedActivities.forEach((activity) => {
+          if (Array.isArray(activity.likedBy) && activity.likedBy.includes(user.uid)) {
+            liked.add(activity.id);
+          }
+
+          if (Array.isArray(activity.interestedUsers) && activity.interestedUsers.includes(user.uid)) {
+            joined.add(activity.id);
+          }
+        });
+
+        setUserLikes(liked);
+        setUserJoinedActivities(joined);
+        setActivitiesReady(true);
+      },
+      (error) => {
+        console.error('Activity subscription error', error);
+        setActivitiesReady(true);
+        Alert.alert('Live feed failed', 'We could not subscribe to activities right now.');
+      }
+    );
+
+    const unsubscribeUsers = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        const users = snapshot.docs.map((item) => ({
+          id: item.id,
+          ...item.data()
+        }));
+
+        setAllUsers(users);
+      },
+      (error) => {
+        console.error('Users subscription error', error);
+      }
+    );
+
+    return () => {
+      unsubscribeActivities();
+      unsubscribeUsers();
+    };
+  }, [user.uid]);
+
+  const loadHomeData = async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
+
+    try {
+      await requestLocation();
+    } catch (error) {
+      console.error('Home load error', error);
+      Alert.alert('Home load failed', 'We could not load nearby activity data right now.');
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const handleCreatePost = async () => {
-    if (!newActivity.trim() || !newLocation.trim() || !newDate.trim() || !newTime.trim()) {
-      Alert.alert('Missing Information', 'Please fill in all fields to create an activity.');
-      return;
-    }
+  useEffect(() => {
+    loadHomeData();
+  }, []);
 
-    try {
-      const startTime = new Date(`${newDate} ${newTime}`);
-      await createActivity(db, {
-        activity: newActivity.trim(),
-        location: { name: newLocation.trim() },
-        startTime: startTime,
-        isUrgent: isUrgent,
-        createdAt: new Date(),
-        creatorId: user.uid,
-        creatorName: user.displayName || 'Anonymous'
-      });
-      
-      // Reset form
-      setNewActivity('');
-      setNewLocation('');
-      setNewDate('');
-      setNewTime('');
-      setIsUrgent(false);
-      setShowCreatePostModal(false);
-      
-      // Refresh posts
-      await fetchPosts();
-      
-      Alert.alert('Success', 'Your activity has been created!');
-    } catch (error) {
-      console.error('Error creating post:', error);
-      Alert.alert('Error', 'Failed to create activity. Please try again.');
+  useEffect(() => {
+    if (userLocation) {
+      setLocationMessage(`Showing people and activities within ${radiusKm} km.`);
     }
-  };
+  }, [radiusKm, userLocation]);
 
-  const handleJoinActivity = async (postId) => {
-    try {
-      // In a real implementation, you'd update the interestedUsers array
-      // For now, we'll just show a confirmation
-      Alert.alert('Joining Activity', 'You\'ve expressed interest in this activity!');
-    } catch (error) {
-      console.error('Error joining activity:', error);
-      Alert.alert('Error', 'Failed to join activity. Please try again.');
-    }
-  };
-
-  const handleLikeActivity = async (postId) => {
-    try {
-      // Toggle like status
-      if (userLikes.has(postId)) {
-        await unlikeActivity(db, postId, user.uid);
-        setUserLikes(prev => {
-          const newSet = new Set(prev);
-          newSet.delete(postId);
-          return newSet;
-        });
-      } else {
-        await likeActivity(db, postId, user.uid);
-        setUserLikes(prev => {
-          const newSet = new Set(prev);
-          newSet.add(postId);
-          return newSet;
-        });
-      }
-      
-      // Update local state for immediate feedback
-      setPosts(prev => 
-        prev.map(post => 
-          post.id === postId 
-            ? { 
-                ...post, 
-                likes: userLikes.has(postId) ? post.likes - 1 : post.likes + 1,
-                likedBy: userLikes.has(postId) 
-                  ? post.likedBy.filter(id => id !== user.uid) 
-                  : [...post.likedBy, user.uid]
-              }
-            : post
-        )
-      );
-    } catch (error) {
-      console.error('Error liking activity:', error);
-      Alert.alert('Error', 'Failed to process like. Please try again.');
-    }
+  const handleRefresh = () => {
+    setRefreshing(true);
+    loadHomeData({ silent: true });
   };
 
   const handleSignOut = async () => {
+    setSigningOut(true);
+
     try {
       await signOut(auth);
     } catch (error) {
       console.error('Sign out error', error);
       Alert.alert('Sign out failed', error.message || 'Please try again.');
+    } finally {
+      setSigningOut(false);
     }
   };
 
-  useEffect(() => {
-    fetchPosts();
-  }, [filterTrending, filterToday, filterWeekend, selectedCategory]);
+  const handleCreatePost = async (values) => {
+    try {
+      await createActivity(db, {
+        activity: values.activity.trim(),
+        location: {
+          name: values.locationName.trim(),
+          ...(userLocation || userProfile?.location || {})
+        },
+        startTime: values.startTime || new Date(),
+        isUrgent: values.isUrgent,
+        createdAt: new Date(),
+        creatorId: user.uid,
+        creatorName: userProfile?.displayName || user.email?.split('@')[0] || 'RuFree User',
+        creatorPhotoUrl: userProfile?.photoUrl || '',
+        tags: [...new Set([values.activity.trim(), ...favoriteActivities])]
+      });
 
-  const renderHeader = () => {
-    return (
-      <View style={styles.header}>
-        <View style={styles.headerContent}>
-          <Text style={styles.headerTitle}>RuFeeds</Text>
-          <Text style={styles.headerSubtitle}>Discover what's happening now</Text>
-        </View>
-        <View style={styles.filterContainer}>
-          <TouchableOpacity 
-            style={[styles.filterButton, filterTrending && styles.activeFilter]}
-            onPress={() => setFilterTrending(!filterTrending)}
-          >
-            <Text style={styles.filterButtonText}>🔥 Trending</Text>
-          </TouchableOpacity>
-          <TouchableOpacity 
-            style={[styles.filterButton, filterToday && styles.activeFilter]}
-            onPress={() => setFilterToday(!filterToday)}
-          >
-            <Text style={styles.filterButtonText}>📅 Today</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
+      setShowCreateModal(false);
+      Alert.alert('Activity posted', 'Your nearby activity is now live.');
+    } catch (error) {
+      console.error('Create activity error', error);
+      Alert.alert('Post failed', error.message || 'Please try again.');
+    }
   };
 
-  const renderCreateButton = () => {
-    return (
-      <TouchableOpacity 
-        style={styles.createButton} 
-        onPress={() => setShowCreatePostModal(true)}
-      >
-        <View style={styles.createButtonContent}>
-          <Text style={styles.createButtonText}>+</Text>
-          <Text style={styles.createButtonLabel}>Create Activity</Text>
-        </View>
-      </TouchableOpacity>
-    );
+  const handleLike = async (activityId) => {
+    const alreadyLiked = userLikes.has(activityId);
+
+    try {
+      if (alreadyLiked) {
+        await unlikeActivity(db, activityId, user.uid);
+        setUserLikes((current) => {
+          const next = new Set(current);
+          next.delete(activityId);
+          return next;
+        });
+      } else {
+        await likeActivity(db, activityId, user.uid);
+        setUserLikes((current) => {
+          const next = new Set(current);
+          next.add(activityId);
+          return next;
+        });
+      }
+
+      setActivities((current) =>
+        current.map((activity) =>
+          activity.id === activityId
+            ? {
+                ...activity,
+                likedBy: alreadyLiked
+                  ? (activity.likedBy || []).filter((id) => id !== user.uid)
+                  : [...(activity.likedBy || []), user.uid],
+                likesCount: alreadyLiked
+                  ? Math.max((activity.likesCount || 1) - 1, 0)
+                  : (activity.likesCount || 0) + 1
+              }
+            : activity
+        )
+      );
+    } catch (error) {
+      console.error('Like toggle error', error);
+      Alert.alert('Reaction failed', 'We could not update that activity right now.');
+    }
   };
 
-  const renderEmptyState = () => {
-    return (
-      <View style={styles.emptyState}>
-        {!filterTrending && !filterToday && !filterWeekend ? (
-          <View>
-            <Text style={styles.emptyStateTitle}>No activities yet</Text>
-            <Text style={styles.emptyStateSubtitle}>
-              Be the first to create an activity and see who's free to join!
-            </Text>
-            <TouchableOpacity 
-              style={styles.createButton} 
-              onPress={() => setShowCreatePostModal(true)}
-            >
-              <View style={styles.createButtonContent}>
-                <Text style={styles.createButtonText}>+</Text>
-                <Text style={styles.createButtonLabel}>Create First Activity</Text>
-              </View>
-            </TouchableOpacity>
+  const handleJoin = async (activityId) => {
+    const alreadyJoined = userJoinedActivities.has(activityId);
+
+    try {
+      if (alreadyJoined) {
+        await leaveActivity(db, activityId, user.uid);
+        setUserJoinedActivities((current) => {
+          const next = new Set(current);
+          next.delete(activityId);
+          return next;
+        });
+      } else {
+        await joinActivity(db, activityId, user.uid);
+        setUserJoinedActivities((current) => {
+          const next = new Set(current);
+          next.add(activityId);
+          return next;
+        });
+      }
+
+      setActivities((current) =>
+        current.map((activity) =>
+          activity.id === activityId
+            ? {
+                ...activity,
+                interestedUsers: alreadyJoined
+                  ? (activity.interestedUsers || []).filter((id) => id !== user.uid)
+                  : [...(activity.interestedUsers || []), user.uid],
+                interestedCount: alreadyJoined
+                  ? Math.max((activity.interestedCount || 1) - 1, 0)
+                  : (activity.interestedCount || 0) + 1
+              }
+            : activity
+        )
+      );
+    } catch (error) {
+      console.error('Join toggle error', error);
+      Alert.alert('Join failed', 'We could not update your participation right now.');
+    }
+  };
+
+  const renderNearbyUser = (person) => (
+    <View key={person.uid} style={styles.nearbyCard}>
+      {person.photoUrl ? (
+        <Image source={{ uri: person.photoUrl }} style={styles.nearbyAvatar} />
+      ) : (
+        <View style={[styles.nearbyAvatar, styles.nearbyAvatarFallback]}>
+          <Text style={styles.nearbyInitial}>{person.displayName.charAt(0).toUpperCase()}</Text>
+        </View>
+      )}
+      <Text style={styles.nearbyName}>{person.displayName}</Text>
+      <Text style={styles.nearbyDistance}>{person.distanceLabel}</Text>
+      <Text style={styles.nearbyBio} numberOfLines={2}>
+        {person.bio || 'Open to meeting up right now.'}
+      </Text>
+      <View style={styles.matchTagRow}>
+        {person.sharedInterests.slice(0, 2).map((interest) => (
+          <View key={interest} style={styles.matchTag}>
+            <Text style={styles.matchTagText}>{interest}</Text>
           </View>
-        ) : (
-          <View>
-            <Text style={styles.emptyStateTitle}>No activities match your filters</Text>
-            <Text style={styles.emptyStateSubtitle}>
-              Try adjusting your filters or create a new activity!
+        ))}
+      </View>
+    </View>
+  );
+
+  const renderActivityCard = (activity) => {
+    const isLiked = userLikes.has(activity.id);
+    const isJoined = userJoinedActivities.has(activity.id);
+    const interestedCount =
+      typeof activity.interestedCount === 'number'
+        ? activity.interestedCount
+        : Array.isArray(activity.interestedUsers)
+          ? activity.interestedUsers.length
+          : 0;
+    const participantPreview = (activity.interestedUsers || [])
+      .map((participantId) => {
+        if (participantId === user.uid) {
+          return 'You';
+        }
+
+        return allUsers.find((person) => person.uid === participantId)?.displayName || null;
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+
+    return (
+      <View key={activity.id} style={[styles.activityCard, activity.isUrgent && styles.activityCardUrgent]}>
+        <View style={styles.activityTopRow}>
+          <View style={styles.activityEmojiWrap}>
+            <Text style={styles.activityEmoji}>{getActivityEmoji(activity.activity)}</Text>
+          </View>
+          <View style={styles.activityTopCopy}>
+            <View style={styles.activityTitleRow}>
+              <Text style={styles.activityTitle}>{activity.activity || 'Nearby activity'}</Text>
+              {activity.availableNow && (
+                <View style={styles.nowBadge}>
+                  <Text style={styles.nowBadgeText}>AVAILABLE NOW</Text>
+                </View>
+              )}
+            </View>
+            <Text style={styles.activityMeta}>{activity.distanceLabel}</Text>
+            <Text style={styles.activityMeta}>
+              {activity.location?.name || 'Location coming soon'} • {formatDate(activity.startTime)}
             </Text>
-            <TouchableOpacity 
-              style={styles.createButton} 
-              onPress={() => setShowCreatePostModal(true)}
-            >
-              <View style={styles.createButtonContent}>
-                <Text style={styles.createButtonText}>+</Text>
-                <Text style={styles.createButtonLabel}>Create Activity</Text>
+            <Text style={styles.activityMeta}>Hosted by {activity.creatorName || 'RuFree user'}</Text>
+          </View>
+        </View>
+
+        {activity.interestMatches.length > 0 && (
+          <View style={styles.interestMatchRow}>
+            {activity.interestMatches.slice(0, 3).map((interest) => (
+              <View key={interest} style={styles.interestMatchChip}>
+                <Text style={styles.interestMatchChipText}>{interest}</Text>
               </View>
-            </TouchableOpacity>
+            ))}
           </View>
         )}
+
+        <View style={styles.activityActionRow}>
+          <TouchableOpacity
+            style={[styles.joinButton, isJoined && styles.joinButtonActive]}
+            onPress={() => handleJoin(activity.id)}
+          >
+            <Text style={[styles.joinButtonText, isJoined && styles.joinButtonTextActive]}>
+              {isJoined ? 'Joined' : 'Join now'}
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.likeButton, isLiked && styles.likeButtonActive]}
+            onPress={() => handleLike(activity.id)}
+          >
+            <Text style={styles.likeButtonText}>
+              {isLiked ? '♥' : '♡'} {activity.likesCount || 0}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={styles.participationRow}>
+          <Text style={styles.participationText}>
+            {interestedCount > 0
+              ? `${interestedCount} joining now`
+              : 'Be the first to join this activity'}
+          </Text>
+          {participantPreview.length > 0 ? (
+            <Text style={styles.participationNames}>{participantPreview.join(' • ')}</Text>
+          ) : null}
+        </View>
       </View>
     );
   };
 
-  const renderPostItem = ({ item }) => {
-    const isLikedByUser = userLikes.has(item.id);
-    
+  if (loading || !activitiesReady) {
     return (
-      <View key={item.id} style={[styles.postCard, item.isUrgent && styles.urgentPost]}>
-        {/* Activity Header with urgency badge */}
-        <View style={styles.postHeader}>
-          <Text style={[styles.activityText, item.isUrgent && styles.urgentActivityText]}>
-            {item.activity || 'Untitled activity'}
-          </Text>
-          {item.isUrgent && (
-            <View style={styles.urgencyBadge}>
-              <Text style={styles.urgencyBadgeText}>URGENT</Text>
+      <View style={styles.loaderScreen}>
+        <ActivityIndicator size="large" color="#17D6C5" />
+        <Text style={styles.loaderText}>Finding people near you right now…</Text>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+      >
+        <View style={styles.hero}>
+          <View style={styles.heroHeaderRow}>
+            <View style={styles.heroBrand}>
+              <Text style={styles.heroEyebrow}>Real people. Real-time activities.</Text>
+              <Text style={styles.heroTitle}>RU FREE?</Text>
+              <Text style={styles.heroSubtitle}>
+                Find people available now and join things that match your energy, interests, and radius.
+              </Text>
+            </View>
+            <TouchableOpacity style={styles.signOutPill} onPress={handleSignOut} disabled={signingOut}>
+              <Text style={styles.signOutPillText}>{signingOut ? 'Signing out...' : 'Sign out'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.heroStatsRow}>
+            <View style={styles.heroStatCard}>
+              <Text style={styles.heroStatValue}>{availableNowCount}</Text>
+              <Text style={styles.heroStatLabel}>Available now</Text>
+            </View>
+            <View style={styles.heroStatCard}>
+              <Text style={styles.heroStatValue}>{nearbyUsers.length}</Text>
+              <Text style={styles.heroStatLabel}>People nearby</Text>
+            </View>
+            <View style={styles.heroStatCard}>
+              <Text style={styles.heroStatValue}>{favoriteActivities.length}</Text>
+              <Text style={styles.heroStatLabel}>Your interests</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.discoveryCard}>
+          <View style={styles.discoveryHeader}>
+            <View>
+              <Text style={styles.sectionEyebrow}>Nearby discovery</Text>
+              <Text style={styles.sectionTitle}>Within your radius</Text>
+            </View>
+            <TouchableOpacity style={styles.createButtonInline} onPress={() => setShowCreateModal(true)}>
+              <Text style={styles.createButtonInlineText}>Post activity</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Text style={styles.locationStatus}>{locationMessage}</Text>
+
+          <TextInput
+            value={searchText}
+            onChangeText={setSearchText}
+            placeholder="Search coffee, tennis, dinner, walks..."
+            placeholderTextColor="#6A7A84"
+            style={styles.searchInput}
+          />
+
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.radiusRow}>
+            {RADIUS_OPTIONS.map((option) => (
+              <TouchableOpacity
+                key={option}
+                style={[styles.radiusChip, radiusKm === option && styles.radiusChipActive]}
+                onPress={() => setRadiusKm(option)}
+              >
+                <Text style={[styles.radiusChipText, radiusKm === option && styles.radiusChipTextActive]}>
+                  {option} km
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </ScrollView>
+
+          <View style={styles.toggleRow}>
+            <View style={styles.toggleCard}>
+              <Text style={styles.toggleTitle}>Only available now</Text>
+              <Switch value={onlyAvailableNow} onValueChange={setOnlyAvailableNow} />
+            </View>
+            <View style={styles.toggleCard}>
+              <Text style={styles.toggleTitle}>Match my interests</Text>
+              <Switch value={onlyMatchingInterests} onValueChange={setOnlyMatchingInterests} />
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.debugCard}>
+          <Text style={styles.debugTitle}>Live verification</Text>
+          <View style={styles.debugGrid}>
+            {debugRows.map((item) => (
+              <View key={item.label} style={styles.debugPill}>
+                <Text style={styles.debugLabel}>{item.label}</Text>
+                <Text style={styles.debugValue}>{item.value}</Text>
+              </View>
+            ))}
+          </View>
+        </View>
+
+        <View style={styles.profileStrip}>
+          {userProfile?.photoUrl ? (
+            <Image source={{ uri: userProfile.photoUrl }} style={styles.profileStripImage} />
+          ) : (
+            <View style={[styles.profileStripImage, styles.nearbyAvatarFallback]}>
+              <Text style={styles.nearbyInitial}>
+                {(userProfile?.displayName || 'R').charAt(0).toUpperCase()}
+              </Text>
+            </View>
+          )}
+          <View style={styles.profileStripCopy}>
+            <View style={styles.profileStripHeader}>
+              <Text style={styles.profileStripName}>{userProfile?.displayName || 'RuFree User'}</Text>
+              <TouchableOpacity
+                style={styles.profileEditButton}
+                onPress={() => setShowEditProfileModal(true)}
+              >
+                <Text style={styles.profileEditButtonText}>Edit</Text>
+              </TouchableOpacity>
+            </View>
+            <Text style={styles.profileStripBio} numberOfLines={2}>
+              {userProfile?.bio || 'Complete your profile so people nearby can understand your vibe.'}
+            </Text>
+            <View style={styles.profileInterestRow}>
+              {favoriteActivities.slice(0, 4).map((activity) => (
+                <View key={activity} style={styles.profileInterestChip}>
+                  <Text style={styles.profileInterestChipText}>{activity}</Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionEyebrow}>Live map</Text>
+          <Text style={styles.sectionTitle}>See who is around you</Text>
+          <View style={styles.mapCard}>
+            <View style={styles.mapSurface}>
+              <View style={styles.mapRingOuter} />
+              <View style={styles.mapRingMiddle} />
+              <View style={styles.mapRingInner} />
+              <View style={styles.mapCrosshairVertical} />
+              <View style={styles.mapCrosshairHorizontal} />
+
+              {mapPins.map((pin) => (
+                <View
+                  key={pin.id}
+                  style={[
+                    styles.mapPin,
+                    pin.tone === 'activity' ? styles.mapPinActivity : styles.mapPinPerson,
+                    {
+                      top: `${pin.top}%`,
+                      left: `${pin.left}%`
+                    }
+                  ]}
+                >
+                  <Text style={styles.mapPinText}>{pin.glyph}</Text>
+                </View>
+              ))}
+
+              <View style={styles.mapCenterMarker}>
+                <View style={styles.mapCenterDot} />
+              </View>
+            </View>
+
+            <View style={styles.mapLegendRow}>
+              <View style={styles.mapLegendItem}>
+                <View style={[styles.mapLegendSwatch, styles.mapLegendSwatchPerson]} />
+                <Text style={styles.mapLegendText}>People nearby</Text>
+              </View>
+              <View style={styles.mapLegendItem}>
+                <View style={[styles.mapLegendSwatch, styles.mapLegendSwatchActivity]} />
+                <Text style={styles.mapLegendText}>Activities</Text>
+              </View>
+              <Text style={styles.mapRadiusLabel}>{radiusKm} km radius</Text>
+            </View>
+          </View>
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionEyebrow}>People available now</Text>
+          <Text style={styles.sectionTitle}>Nearby people</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nearbyRow}>
+            {nearbyUsers.length > 0 ? (
+              nearbyUsers.map(renderNearbyUser)
+            ) : (
+              <View style={styles.emptyNearbyCard}>
+                <Text style={styles.emptyNearbyTitle}>No nearby profiles yet</Text>
+                <Text style={styles.emptyNearbyBody}>
+                  Once more people nearby finish their profiles, they’ll show up here with shared interests and distance.
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+        </View>
+
+        <View style={styles.sectionBlock}>
+          <Text style={styles.sectionEyebrow}>Live activities</Text>
+          <Text style={styles.sectionTitle}>Find activities near you</Text>
+          {visibleActivities.length > 0 ? (
+            visibleActivities.map(renderActivityCard)
+          ) : (
+            <View style={styles.emptyFeedCard}>
+              <Text style={styles.emptyFeedTitle}>Nothing in this radius yet</Text>
+              <Text style={styles.emptyFeedBody}>
+                Try widening your radius, turning off a filter, or posting the first activity nearby.
+              </Text>
+              <TouchableOpacity style={styles.emptyFeedButton} onPress={() => setShowCreateModal(true)}>
+                <Text style={styles.emptyFeedButtonText}>Create the first one</Text>
+              </TouchableOpacity>
             </View>
           )}
         </View>
-        
-        {/* Activity Details */}
-        <View style={styles.postDetails}>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailIcon}>📅</Text>
-            <Text style={styles.detailText}>
-              <Text style={styles.detailLabel}>When:</Text> {formatDate(item.startTime)}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailIcon}>📍</Text>
-            <Text style={styles.detailText}>
-              <Text style={styles.detailLabel}>Where:</Text> {item.location?.name || 'Not specified'}
-            </Text>
-          </View>
-          <View style={styles.detailRow}>
-            <Text style={styles.detailIcon}>👤</Text>
-            <Text style={styles.detailText}>
-              <Text style={styles.detailLabel}>Host:</Text> {item.creatorName || 'Anonymous'}
-            </Text>
-          </View>
-        </View>
-        
-        {/* Action Buttons */}
-        <View style={styles.actionsContainer}>
-          <View style={styles.actionButtonGroup}>
-            {/* Join Button */}
-            <TouchableOpacity 
-              style={[styles.joinButton, item.isUrgent && styles.urgentJoinButton]}
-              onPress={() => handleJoinActivity(item.id)}
-            >
-              <Text style={styles.joinButtonText}>I'm Free!</Text>
-            </TouchableOpacity>
-            
-            {/* Like Button */}
-            <TouchableOpacity 
-              style={[styles.likeButton, isLikedByUser && styles.likedButton]}
-              onPress={() => handleLikeActivity(item.id)}
-            >
-              <View style={styles.likeButtonContent}>
-                {isLikedByUser ? (
-                  <Text style={styles.likedText}>❤️</Text>
-                ) : (
-                  <Text style={styles.likeText}>♡</Text>
-                )}
-                <Text style={styles.likeCountText}>
-                  {item.likes || 0}
-                </Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-          
-          {/* Interest Count */}
-          <View style={styles.interestContainer}>
-            <Text style={styles.interestText}>
-              {Array.isArray(item.interestedUsers) ? item.interestedUsers.length : 0} 
-              {Array.isArray(item.interestedUsers) && item.interestedUsers.length === 1 
-                ? 'person' 
-                : 'people'} 
-              interested
-            </Text>
-          </View>
-        </View>
-      </View>
-    );
-  };
+      </ScrollView>
 
-  return (
-    <View style={styles.container}>
-      {/* Header */}
-      {renderHeader()}
-      
-      {/* Main Content */}
-      <View style={styles.mainContent}>
-        {/* Create Button (Floating) */}
-        {renderCreateButton()}
-        
-        {/* Posts List */}
-        {!loading && posts.length === 0 ? (
-          <View style={{ flex: 1 }}>{renderEmptyState()}</View>
-        ) : (
-          <FlatList
-            data={posts}
-            renderItem={renderPostItem}
-            keyExtractor={item => item.id}
-            contentContainerStyle={styles.listContent}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => {
-                  setRefreshing(true);
-                  fetchPosts();
-                }}
-                tintColor="#FF6B6B"
-                title="Pull to refresh"
+      <TouchableOpacity style={styles.fab} onPress={() => setShowCreateModal(true)}>
+        <Text style={styles.fabText}>+</Text>
+      </TouchableOpacity>
+
+      <Modal animationType="slide" transparent visible={showCreateModal}>
+        <View style={styles.modalBackdrop}>
+          <ScrollView contentContainerStyle={styles.modalScrollContent}>
+            <View style={styles.modalCard}>
+              <Text style={styles.modalTitle}>Create an activity</Text>
+              <Text style={styles.modalSubtitle}>
+                Post something simple that people nearby can join right now.
+              </Text>
+
+              <ActivityComposer
+                onSubmit={handleCreatePost}
+                onCancel={() => setShowCreateModal(false)}
               />
-            }
-          />
-        )}
-        
-        {/* Loading Indicator */}
-        {loading && posts.length === 0 && (
-          <View style={styles.centeredLoader}>
-            <ActivityIndicator size="large" color="#FF6B6B" />
-          </View>
-        )}
-      </View>
-      
-      {/* Create Post Modal */}
-      <Modal 
-        visible={showCreatePostModal} 
-        animationType="slide"
-        transparent={false}
-      >
-        <View style={styles.modalBackground}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Create New Activity</Text>
-              <TouchableOpacity 
-                style={styles.modalCloseButton}
-                onPress={() => {
-                  setShowCreatePostModal(false);
-                  // Reset form
-                  setNewActivity('');
-                  setNewLocation('');
-                  setNewDate('');
-                  setNewTime('');
-                  setIsUrgent(false);
-                }}
-              >
-                <Text style={styles.modalCloseButtonText}>×</Text>
-              </TouchableOpacity>
             </View>
-            
-            <ScrollView style={styles.modalContent}>
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Activity Name</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="What activity would you like to do?"
-                  value={newActivity}
-                  onChangeText={setNewActivity}
-                  autoFocus
-                />
-              </View>
-              
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Location</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="Where will this activity take place?"
-                  value={newLocation}
-                  onChangeText={setNewLocation}
-                />
-              </View>
-              
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Date</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="YYYY-MM-DD"
-                  value={newDate}
-                  onChangeText={setNewDate}
-                />
-              </View>
-              
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Time</Text>
-                <TextInput
-                  style={styles.textInput}
-                  placeholder="HH:MM (24-hour format)"
-                  value={newTime}
-                  onChangeText={setNewTime}
-                />
-              </View>
-              
-              <View style={styles.formGroup}>
-                <Text style={styles.formLabel}>Options</Text>
-                <View style={styles.optionsRow}>
-                  <View style={styles.optionItem}>
-                    <Switch
-                      value={isUrgent}
-                      onValueChange={setIsUrgent}
-                      thumbColor={isUrgent ? '#FF6B6B' : '#f4f3f4'}
-                      trackColor={{ false: '#767577', true: '#81b0ff' }}
-                    />
-                    <Text style={styles.optionLabel}>Mark as Urgent</Text>
-                  </View>
-                </View>
-              </View>
-            </ScrollView>
-            
-            <View style={styles.modalActions}>
-              <TouchableOpacity 
-                style={[styles.cancelButton, styles.button]}
-                onPress={() => {
-                  setShowCreatePostModal(false);
-                  // Reset form
-                  setNewActivity('');
-                  setNewLocation('');
-                  setNewDate('');
-                  setNewTime('');
-                  setIsUrgent(false);
-                }}
-              >
-                <Text style={styles.buttonText}>Cancel</Text>
-              </TouchableOpacity>
-              
-              <TouchableOpacity 
-                style={[styles.createButtonModal, styles.button]}
-                onPress={handleCreatePost}
-              >
-                <Text style={styles.buttonText}>Create Activity</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+          </ScrollView>
         </View>
+      </Modal>
+
+      <Modal animationType="slide" visible={showEditProfileModal}>
+        <EditProfileScreen
+          user={user}
+          initialProfile={userProfile}
+          onCancel={() => setShowEditProfileModal(false)}
+          onProfileSaved={() => setShowEditProfileModal(false)}
+        />
       </Modal>
     </View>
   );
 };
 
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
-    backgroundColor: '#FFF8F0',
+    backgroundColor: '#07141B'
   },
-  header: {
-    backgroundColor: '#FF6B6B',
-    paddingVertical: 20,
-    paddingHorizontal: 16,
-    elevation: 4,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+  scrollContent: {
+    paddingBottom: 120
   },
-  headerContent: {
-    flexDirection: 'column',
-    alignItems: 'flex-start',
-  },
-  headerTitle: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
-    marginBottom: 4,
-  },
-  headerSubtitle: {
-    fontSize: 14,
-    color: '#FFE5E5',
-  },
-  filterContainer: {
-    flexDirection: 'row',
-    marginTop: 8,
-  },
-  filterButton: {
-    backgroundColor: 'rgba(255,255,255,0.2)',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginHorizontal: 4,
-  },
-  activeFilter: {
-    backgroundColor: 'rgba(255,255,255,0.35)',
-  },
-  filterButtonText: {
-    color: '#FFFFFF',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  createButton: {
-    position: 'absolute',
-    bottom: 24,
-    right: 24,
-    backgroundColor: '#FF6B6B',
-    width: 60,
-    height: 60,
-    borderRadius: 30,
+  loaderScreen: {
+    flex: 1,
+    backgroundColor: '#07141B',
     justifyContent: 'center',
-    alignItems: 'center',
-    elevation: 8,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4.65,
+    alignItems: 'center'
   },
-  createButtonContent: {
-    alignItems: 'center',
+  loaderText: {
+    color: '#BFEDEE',
+    marginTop: 14,
+    fontSize: 15
   },
-  createButtonText: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: '#FFFFFF',
+  hero: {
+    paddingTop: 58,
+    paddingHorizontal: 20,
+    paddingBottom: 26,
+    backgroundColor: '#07141B'
   },
-  createButtonLabel: {
-    fontSize: 10,
-    color: '#FFFFFF',
-    marginTop: 4,
-  },
-  mainContent: {
-    flex: 1,
-  },
-  listContent: {
-    paddingBottom: 80,
-  },
-  postCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    marginHorizontal: 16,
-    marginVertical: 8,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3.84,
-    elevation: 3,
-  },
-  urgentPost: {
-    borderColor: '#FF6B6B',
-    borderWidth: 2,
-  },
-  postHeader: {
+  heroHeaderRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'flex-start',
-    marginBottom: 12,
+    justifyContent: 'space-between'
   },
-  activityText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#2D2D2D',
+  heroBrand: {
+    flex: 1,
+    paddingRight: 12
   },
-  urgentActivityText: {
-    color: '#FF6B6B',
+  heroEyebrow: {
+    color: '#17D6C5',
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginBottom: 10
   },
-  urgencyBadge: {
-    backgroundColor: '#FF6B6B',
-    borderRadius: 12,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-  },
-  urgencyBadgeText: {
+  heroTitle: {
     color: '#FFFFFF',
-    fontSize: 10,
-    fontWeight: 'bold',
+    fontSize: 42,
+    fontWeight: '900',
+    letterSpacing: 0.5
   },
-  postDetails: {
-    marginBottom: 16,
-  },
-  detailRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  detailIcon: {
-    marginRight: 8,
+  heroSubtitle: {
+    color: '#D8E9EC',
     fontSize: 16,
+    lineHeight: 24,
+    marginTop: 12
   },
-  detailText: {
-    flex: 1,
-  },
-  detailLabel: {
-    fontWeight: '600',
-    color: '#5D5D5D',
-  },
-  actionsContainer: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  actionButtonGroup: {
-    flexDirection: 'row',
-  },
-  joinButton: {
-    backgroundColor: '#4CAF50',
-    borderRadius: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    marginRight: 8,
-  },
-  urgentJoinButton: {
-    backgroundColor: '#FF6B6B',
-  },
-  joinButtonText: {
-    color: '#FFFFFF',
-    fontSize: 14,
-    fontWeight: '600',
-  },
-  likeButton: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 20,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-  },
-  likedButton: {
-    backgroundColor: '#FFE5E5',
-  },
-  likeButtonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  likeText: {
-    fontSize: 18,
-    color: '#FF6B6B',
-  },
-  likedText: {
-    fontSize: 18,
-    color: '#FF6B6B',
-  },
-  likeCountText: {
-    marginLeft: 6,
-    fontSize: 12,
-    color: '#666666',
-    fontWeight: '500',
-  },
-  interestContainer: {
-    alignItems: 'flex-end',
-  },
-  interestText: {
-    fontSize: 12,
-    color: '#888888',
-  },
-  emptyState: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-  },
-  emptyStateTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#333333',
-    marginBottom: 12,
-  },
-  emptyStateSubtitle: {
-    fontSize: 14,
-    color: '#666666',
-    textAlign: 'center',
-    marginBottom: 24,
-    maxWidth: 280,
-  },
-  centeredLoader: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalBackground: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.5)',
-    justifyContent: 'flex-end',
-  },
-  modalContainer: {
-    backgroundColor: '#FFFFFF',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
-    padding: 24,
-  },
-  modalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 24,
-  },
-  modalTitle: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: '#2D2D2D',
-  },
-  modalCloseButton: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 20,
-    width: 30,
-    height: 30,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  modalCloseButtonText: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    color: '#666666',
-  },
-  modalContent: {
-    marginBottom: 24,
-  },
-  formGroup: {
-    marginBottom: 16,
-  },
-  formLabel: {
-    fontSize: 14,
-    fontWeight: '600',
-    color: '#333333',
-    marginBottom: 6,
-  },
-  textInput: {
+  signOutPill: {
     borderWidth: 1,
-    borderColor: '#E0E0E0',
-    borderRadius: 12,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    fontSize: 16,
-    backgroundColor: '#FAFAFA',
+    borderColor: '#1C3C46',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#10232C'
   },
-  optionsRow: {
+  signOutPillText: {
+    color: '#D7EEF0',
+    fontWeight: '700'
+  },
+  heroStatsRow: {
     flexDirection: 'row',
-    alignItems: 'center',
+    marginTop: 22
   },
-  optionItem: {
+  heroStatCard: {
+    flex: 1,
+    backgroundColor: '#10232C',
+    borderRadius: 18,
+    paddingVertical: 18,
+    paddingHorizontal: 14,
+    marginRight: 10
+  },
+  heroStatValue: {
+    color: '#FFFFFF',
+    fontSize: 28,
+    fontWeight: '900',
+    marginBottom: 6
+  },
+  heroStatLabel: {
+    color: '#A8C6CB',
+    fontSize: 13
+  },
+  discoveryCard: {
+    marginTop: -6,
+    marginHorizontal: 16,
+    backgroundColor: '#F7F2EA',
+    borderRadius: 28,
+    padding: 18
+  },
+  discoveryHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center'
+  },
+  sectionEyebrow: {
+    color: '#FF7B54',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.9,
+    marginBottom: 6
+  },
+  sectionTitle: {
+    color: '#10212A',
+    fontSize: 24,
+    fontWeight: '900'
+  },
+  createButtonInline: {
+    backgroundColor: '#0D1C24',
+    borderRadius: 999,
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  createButtonInlineText: {
+    color: '#FFFFFF',
+    fontWeight: '700'
+  },
+  locationStatus: {
+    color: '#5E6C74',
+    marginTop: 12,
+    fontSize: 14,
+    lineHeight: 20
+  },
+  searchInput: {
+    marginTop: 16,
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    fontSize: 15,
+    color: '#10212A'
+  },
+  radiusRow: {
+    marginTop: 14
+  },
+  radiusChip: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#D9E0E3',
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginRight: 10
+  },
+  radiusChipActive: {
+    backgroundColor: '#17D6C5',
+    borderColor: '#17D6C5'
+  },
+  radiusChipText: {
+    color: '#33444D',
+    fontWeight: '700'
+  },
+  radiusChipTextActive: {
+    color: '#08232A'
+  },
+  toggleRow: {
+    marginTop: 16
+  },
+  toggleCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 18,
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10
+  },
+  toggleTitle: {
+    color: '#10212A',
+    fontWeight: '700',
+    fontSize: 15
+  },
+  debugCard: {
+    marginHorizontal: 16,
+    marginTop: 18,
+    backgroundColor: '#10232C',
+    borderRadius: 24,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#173847'
+  },
+  debugTitle: {
+    color: '#FFFFFF',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 12
+  },
+  debugGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap'
+  },
+  debugPill: {
+    width: '48%',
+    backgroundColor: '#173847',
+    borderRadius: 18,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    marginRight: 10,
+    marginBottom: 10
+  },
+  debugLabel: {
+    color: '#89B9C1',
+    fontSize: 12,
+    fontWeight: '700',
+    marginBottom: 4,
+    textTransform: 'uppercase'
+  },
+  debugValue: {
+    color: '#FFFFFF',
+    fontSize: 15,
+    fontWeight: '800'
+  },
+  profileStrip: {
+    marginHorizontal: 16,
+    marginTop: 18,
+    backgroundColor: '#0F2430',
+    borderRadius: 24,
+    padding: 16,
+    flexDirection: 'row'
+  },
+  mapCard: {
+    marginTop: 12,
+    backgroundColor: '#071923',
+    borderRadius: 28,
+    padding: 16,
+    borderWidth: 1,
+    borderColor: '#12303C'
+  },
+  mapSurface: {
+    height: 280,
+    borderRadius: 22,
+    backgroundColor: '#0D2530',
+    overflow: 'hidden',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  mapRingOuter: {
+    position: 'absolute',
+    width: '88%',
+    height: '88%',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(23, 214, 197, 0.22)'
+  },
+  mapRingMiddle: {
+    position: 'absolute',
+    width: '58%',
+    height: '58%',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(23, 214, 197, 0.3)'
+  },
+  mapRingInner: {
+    position: 'absolute',
+    width: '28%',
+    height: '28%',
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: 'rgba(23, 214, 197, 0.45)'
+  },
+  mapCrosshairVertical: {
+    position: 'absolute',
+    width: 1,
+    height: '100%',
+    backgroundColor: 'rgba(132, 173, 184, 0.16)'
+  },
+  mapCrosshairHorizontal: {
+    position: 'absolute',
+    height: 1,
+    width: '100%',
+    backgroundColor: 'rgba(132, 173, 184, 0.16)'
+  },
+  mapCenterMarker: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: 'rgba(23, 214, 197, 0.2)',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  mapCenterDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#17D6C5'
+  },
+  mapPin: {
+    position: 'absolute',
+    width: 34,
+    height: 34,
+    marginLeft: -17,
+    marginTop: -17,
+    borderRadius: 17,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 2
+  },
+  mapPinPerson: {
+    backgroundColor: '#FFF6ED',
+    borderColor: '#FF9D72'
+  },
+  mapPinActivity: {
+    backgroundColor: '#E7FFFB',
+    borderColor: '#17D6C5'
+  },
+  mapPinText: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#10212A'
+  },
+  mapLegendRow: {
+    marginTop: 14,
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    alignItems: 'center'
+  },
+  mapLegendItem: {
     flexDirection: 'row',
     alignItems: 'center',
     marginRight: 16,
+    marginBottom: 8
   },
-  optionLabel: {
-    marginLeft: 8,
-    fontSize: 14,
-    color: '#555555',
+  mapLegendSwatch: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8
   },
-  modalActions: {
+  mapLegendSwatchPerson: {
+    backgroundColor: '#FF9D72'
+  },
+  mapLegendSwatchActivity: {
+    backgroundColor: '#17D6C5'
+  },
+  mapLegendText: {
+    color: '#BFEDEE',
+    fontSize: 13,
+    fontWeight: '700'
+  },
+  mapRadiusLabel: {
+    color: '#89B9C1',
+    fontSize: 13,
+    fontWeight: '700',
+    marginBottom: 8
+  },
+  profileStripImage: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: '#173847'
+  },
+  profileStripCopy: {
+    flex: 1,
+    marginLeft: 14
+  },
+  profileStripHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 4
   },
-  button: {
+  profileEditButton: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#2A505C',
+    backgroundColor: '#173847',
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  profileEditButtonText: {
+    color: '#D7F8F3',
+    fontWeight: '700'
+  },
+  profileStripName: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '800'
+  },
+  profileStripBio: {
+    color: '#BFD2D7',
+    fontSize: 14,
+    lineHeight: 20
+  },
+  profileInterestRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10
+  },
+  profileInterestChip: {
+    borderRadius: 999,
+    backgroundColor: '#173847',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 8
+  },
+  profileInterestChipText: {
+    color: '#A9FFF5',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  sectionBlock: {
+    marginTop: 24,
+    paddingHorizontal: 16
+  },
+  nearbyRow: {
+    paddingTop: 12,
+    paddingBottom: 4
+  },
+  nearbyCard: {
+    width: 220,
+    backgroundColor: '#FFF6ED',
+    borderRadius: 24,
+    padding: 16,
+    marginRight: 14
+  },
+  nearbyAvatar: {
+    width: 58,
+    height: 58,
+    borderRadius: 29,
+    marginBottom: 14
+  },
+  nearbyAvatarFallback: {
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#1A3642'
+  },
+  nearbyInitial: {
+    color: '#A7FFF5',
+    fontWeight: '900',
+    fontSize: 22
+  },
+  nearbyName: {
+    color: '#14232C',
+    fontSize: 18,
+    fontWeight: '800'
+  },
+  nearbyDistance: {
+    color: '#FF7B54',
+    fontWeight: '700',
+    marginTop: 4,
+    marginBottom: 8
+  },
+  nearbyBio: {
+    color: '#5D6870',
+    fontSize: 13,
+    lineHeight: 19
+  },
+  matchTagRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 10
+  },
+  matchTag: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 8
+  },
+  matchTagText: {
+    color: '#0D4447',
+    fontSize: 12,
+    fontWeight: '700'
+  },
+  emptyNearbyCard: {
+    backgroundColor: '#FFF6ED',
+    borderRadius: 24,
+    padding: 18,
+    width: 280
+  },
+  emptyNearbyTitle: {
+    color: '#14232C',
+    fontSize: 18,
+    fontWeight: '800',
+    marginBottom: 8
+  },
+  emptyNearbyBody: {
+    color: '#61717A',
+    lineHeight: 20
+  },
+  activityCard: {
+    backgroundColor: '#FFFDF9',
+    borderRadius: 24,
+    padding: 16,
+    marginTop: 14
+  },
+  activityCardUrgent: {
+    borderWidth: 2,
+    borderColor: '#FF7B54'
+  },
+  activityTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start'
+  },
+  activityEmojiWrap: {
+    width: 54,
+    height: 54,
+    borderRadius: 27,
+    backgroundColor: '#EAFBFA',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12
+  },
+  activityEmoji: {
+    fontSize: 24
+  },
+  activityTopCopy: {
+    flex: 1
+  },
+  activityTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
+    flexWrap: 'wrap'
+  },
+  activityTitle: {
+    color: '#13212A',
+    fontSize: 20,
+    fontWeight: '900',
+    marginRight: 10,
+    marginBottom: 4
+  },
+  nowBadge: {
+    backgroundColor: '#17D6C5',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    marginBottom: 6
+  },
+  nowBadgeText: {
+    color: '#052227',
+    fontSize: 11,
+    fontWeight: '900'
+  },
+  activityMeta: {
+    color: '#65717A',
+    fontSize: 14,
+    marginTop: 4
+  },
+  interestMatchRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 14
+  },
+  interestMatchChip: {
+    backgroundColor: '#FFF0E4',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 8
+  },
+  interestMatchChipText: {
+    color: '#AF562B',
+    fontWeight: '700',
+    fontSize: 12
+  },
+  activityActionRow: {
+    flexDirection: 'row',
+    marginTop: 16
+  },
+  joinButton: {
     flex: 1,
-    marginHorizontal: 8,
+    backgroundColor: '#11C8A1',
+    borderRadius: 18,
+    paddingVertical: 14,
+    alignItems: 'center',
+    marginRight: 10
   },
-  cancelButton: {
-    backgroundColor: '#F0F0F0',
-    borderRadius: 12,
-    paddingVertical: 12,
+  joinButtonActive: {
+    backgroundColor: '#083B44'
   },
-  createButtonModal: {
-    backgroundColor: '#FF6B6B',
-    borderRadius: 12,
-    paddingVertical: 12,
+  joinButtonText: {
+    color: '#072327',
+    fontWeight: '900',
+    fontSize: 16
   },
-  buttonText: {
+  joinButtonTextActive: {
+    color: '#E8FFFC'
+  },
+  likeButton: {
+    minWidth: 86,
+    borderRadius: 18,
+    backgroundColor: '#F3F1ED',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 12
+  },
+  likeButtonActive: {
+    backgroundColor: '#FFE5E3'
+  },
+  likeButtonText: {
+    color: '#14232C',
+    fontWeight: '800'
+  },
+  participationRow: {
+    marginTop: 12
+  },
+  participationText: {
+    color: '#0D5255',
+    fontWeight: '800',
+    fontSize: 14
+  },
+  participationNames: {
+    color: '#65717A',
+    fontSize: 13,
+    marginTop: 4
+  },
+  emptyFeedCard: {
+    backgroundColor: '#FFF6ED',
+    borderRadius: 24,
+    padding: 20,
+    marginTop: 14
+  },
+  emptyFeedTitle: {
+    color: '#14232C',
+    fontSize: 20,
+    fontWeight: '900',
+    marginBottom: 8
+  },
+  emptyFeedBody: {
+    color: '#65717A',
+    fontSize: 14,
+    lineHeight: 20
+  },
+  emptyFeedButton: {
+    alignSelf: 'flex-start',
+    marginTop: 14,
+    backgroundColor: '#13212A',
+    borderRadius: 999,
+    paddingHorizontal: 16,
+    paddingVertical: 12
+  },
+  emptyFeedButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '800'
+  },
+  fab: {
+    position: 'absolute',
+    right: 20,
+    bottom: 28,
+    width: 66,
+    height: 66,
+    borderRadius: 33,
+    backgroundColor: '#FF7B54',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000000',
+    shadowOpacity: 0.3,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 8 },
+    elevation: 8
+  },
+  fabText: {
+    color: '#FFFFFF',
+    fontSize: 34,
+    fontWeight: '900'
+  },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(3, 13, 19, 0.65)',
+    justifyContent: 'flex-end'
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end'
+  },
+  modalCard: {
+    backgroundColor: '#FFF9F0',
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
+    padding: 20
+  },
+  modalTitle: {
+    color: '#13212A',
+    fontSize: 26,
+    fontWeight: '900'
+  },
+  modalSubtitle: {
+    color: '#65717A',
+    fontSize: 14,
+    lineHeight: 20,
+    marginTop: 8,
+    marginBottom: 18
   },
 });
 

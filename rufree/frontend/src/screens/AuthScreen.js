@@ -7,7 +7,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Image // Import Image
+  View
 } from 'react-native';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -58,13 +58,9 @@ const AuthScreen = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      {/* Image Component Start */}
-      <Image
-        source={require('../assets/RuFREE_logo.png')} // Assuming the image is placed here
-        style={styles.logoImage}
-        resizeMode="contain"
-      />
-      {/* Image Component End */}
+      <View style={styles.logoBadge}>
+        <Text style={styles.logoBadgeText}>R</Text>
+      </View>
 
       <Text style={styles.title}>RuFree</Text>
       <Text style={styles.subtitle}>
@@ -142,13 +138,19 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF0E0',
     padding: 20
   },
-  // New styles for the circular image
-  logoImage: {
-    width: 120, // Adjust size as needed
-    height: 120, // Adjust size as needed
-    borderRadius: 60, // Half of the width/height for a circle
+  logoBadge: {
+    width: 96,
+    height: 96,
+    borderRadius: 28,
+    backgroundColor: '#17D6C5',
+    justifyContent: 'center',
+    alignItems: 'center',
     marginBottom: 20,
-    overflow: 'hidden', // Ensures the image stays within the border radius
+  },
+  logoBadgeText: {
+    fontSize: 42,
+    fontWeight: '900',
+    color: '#06222A'
   },
   title: {
     fontSize: 40,

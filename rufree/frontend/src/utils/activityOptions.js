@@ -6,6 +6,7 @@ export const ACTIVITY_OPTIONS = [
   'Study Sessions',
   'Brunch',
   'Live Music',
+  'Tennis',
   'Football',
   'Board Games',
   'Cinema',
