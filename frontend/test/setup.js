@@ -1,4 +1,19 @@
-jest.mock('react-native/Libraries/Animated/NativeAnimatedHelper');
+const nativeAnimatedHelper =
+  [
+    'react-native/Libraries/Animated/NativeAnimatedHelper',
+    'react-native/src/private/animated/NativeAnimatedHelper'
+  ].find((moduleName) => {
+    try {
+      require.resolve(moduleName);
+      return true;
+    } catch {
+      return false;
+    }
+  });
+
+if (nativeAnimatedHelper) {
+  jest.mock(nativeAnimatedHelper);
+}
 
 const originalConsoleError = console.error;
 

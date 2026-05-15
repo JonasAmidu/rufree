@@ -7,7 +7,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
-  Image // Import Image
+  Image
 } from 'react-native';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
@@ -58,13 +58,11 @@ const AuthScreen = () => {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.container}
     >
-      {/* Image Component Start */}
       <Image
-        source={require('../../assets/RuFREE_logo.png')} // Assuming the image is placed here
+        source={require('../../assets/RuFREE_logo.png')}
         style={styles.logoImage}
         resizeMode="contain"
       />
-      {/* Image Component End */}
 
       <Text style={styles.title}>RuFree</Text>
       <Text style={styles.subtitle}>
@@ -142,13 +140,12 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFF0E0',
     padding: 20
   },
-  // New styles for the circular image
   logoImage: {
-    width: 120, // Adjust size as needed
-    height: 120, // Adjust size as needed
-    borderRadius: 60, // Half of the width/height for a circle
+    width: 120,
+    height: 120,
+    borderRadius: 60,
     marginBottom: 20,
-    overflow: 'hidden', // Ensures the image stays within the border radius
+    overflow: 'hidden'
   },
   title: {
     fontSize: 40,

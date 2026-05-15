@@ -1,11 +1,33 @@
-import { fetchActivities } from '../utils/activityFeed';
-import { collection, getDocs, orderBy, query } from 'firebase/firestore';
+import {
+  calculateDistanceKm,
+  enrichActivities,
+  fetchActivities,
+  filterActivities,
+  joinActivity,
+  leaveActivity
+} from '../utils/activityFeed';
+import {
+  arrayRemove,
+  arrayUnion,
+  collection,
+  doc,
+  getDocs,
+  increment,
+  orderBy,
+  query,
+  updateDoc
+} from 'firebase/firestore';
 
 jest.mock('firebase/firestore', () => ({
+  arrayRemove: jest.fn((value) => ({ type: 'remove', value })),
+  arrayUnion: jest.fn((value) => ({ type: 'union', value })),
   collection: jest.fn(() => 'posts-collection'),
+  doc: jest.fn(() => 'post-doc'),
   getDocs: jest.fn(),
+  increment: jest.fn((value) => ({ type: 'increment', value })),
   orderBy: jest.fn(() => 'order-by-created-at'),
-  query: jest.fn(() => 'posts-query')
+  query: jest.fn(() => 'posts-query'),
+  updateDoc: jest.fn()
 }));
 
 describe('fetchActivities', () => {
@@ -42,5 +64,88 @@ describe('fetchActivities', () => {
         creatorName: 'Jonas'
       }
     ]);
+  });
+
+  it('calculates distances in kilometers', () => {
+    expect(
+      calculateDistanceKm(
+        { latitude: 51.5007, longitude: -0.1246 },
+        { latitude: 51.5074, longitude: -0.1278 }
+      )
+    ).toBeGreaterThan(0);
+  });
+
+  it('enriches and filters activities by radius and interests', () => {
+    const activities = enrichActivities(
+      [
+        {
+          id: 'post-1',
+          activity: 'Coffee hangout',
+          creatorId: 'user-2',
+          creatorName: 'Maya',
+          location: {
+            name: 'Central Cafe',
+            latitude: 51.5007,
+            longitude: -0.1246
+          },
+          likedBy: ['user-9'],
+          startTime: new Date(Date.now() + 1000 * 60 * 60).toISOString()
+        },
+        {
+          id: 'post-2',
+          activity: 'Tennis match',
+          creatorId: 'user-3',
+          creatorName: 'Alex',
+          location: {
+            name: 'Court 1',
+            latitude: 52.52,
+            longitude: 13.405
+          },
+          likedBy: [],
+          startTime: new Date(Date.now() + 1000 * 60 * 60).toISOString()
+        }
+      ],
+      {
+        currentLocation: { latitude: 51.5074, longitude: -0.1278 },
+        favoriteActivities: ['Coffee Chats']
+      }
+    );
+
+    const results = filterActivities(activities, {
+      radiusKm: 10,
+      onlyMatching: true,
+      onlyAvailableNow: true
+    });
+
+    expect(results).toHaveLength(1);
+    expect(results[0].id).toBe('post-1');
+    expect(results[0].interestMatches).toEqual(['Coffee Chats']);
+  });
+
+  it('joins an activity with lightweight presence', async () => {
+    updateDoc.mockResolvedValue();
+
+    await joinActivity({ name: 'db-instance' }, 'post-1', 'user-42');
+
+    expect(doc).toHaveBeenCalledWith({ name: 'db-instance' }, 'posts', 'post-1');
+    expect(arrayUnion).toHaveBeenCalledWith('user-42');
+    expect(increment).toHaveBeenCalledWith(1);
+    expect(updateDoc).toHaveBeenCalledWith('post-doc', {
+      interestedUsers: { type: 'union', value: 'user-42' },
+      interestedCount: { type: 'increment', value: 1 }
+    });
+  });
+
+  it('leaves an activity and reduces lightweight presence', async () => {
+    updateDoc.mockResolvedValue();
+
+    await leaveActivity({ name: 'db-instance' }, 'post-1', 'user-42');
+
+    expect(arrayRemove).toHaveBeenCalledWith('user-42');
+    expect(increment).toHaveBeenCalledWith(-1);
+    expect(updateDoc).toHaveBeenCalledWith('post-doc', {
+      interestedUsers: { type: 'remove', value: 'user-42' },
+      interestedCount: { type: 'increment', value: -1 }
+    });
   });
 });
