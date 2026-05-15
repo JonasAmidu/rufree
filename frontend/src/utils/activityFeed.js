@@ -74,4 +74,3 @@ export const createActivity = async (db, activityData) => {
 const increment = (value) => {
   return { __increment: value };
 };
-};

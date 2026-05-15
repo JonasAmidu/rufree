@@ -60,7 +60,7 @@ const AuthScreen = () => {
     >
       {/* Image Component Start */}
       <Image
-        source={require('../assets/RuFREE_logo.png')} // Assuming the image is placed here
+        source={require('../../assets/RuFREE_logo.png')} // Assuming the image is placed here
         style={styles.logoImage}
         resizeMode="contain"
       />
