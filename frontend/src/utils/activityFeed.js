@@ -10,7 +10,7 @@ import {
   orderBy,
   query,
   updateDoc
-} from 'firebase/firestore';
+} from '@firebase/firestore';
 
 const toDate = (value) => {
   if (!value) {

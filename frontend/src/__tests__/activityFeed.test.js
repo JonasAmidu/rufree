@@ -16,9 +16,9 @@ import {
   orderBy,
   query,
   updateDoc
-} from 'firebase/firestore';
+} from '@firebase/firestore';
 
-jest.mock('firebase/firestore', () => ({
+jest.mock('@firebase/firestore', () => ({
   arrayRemove: jest.fn((value) => ({ type: 'remove', value })),
   arrayUnion: jest.fn((value) => ({ type: 'union', value })),
   collection: jest.fn(() => 'posts-collection'),

@@ -2,15 +2,15 @@ import React from 'react';
 import { Alert } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import AuthScreen from '../screens/AuthScreen';
-import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { createUserWithEmailAndPassword, signInWithEmailAndPassword } from '@firebase/auth';
+import { doc, serverTimestamp, setDoc } from '@firebase/firestore';
 
-jest.mock('firebase/auth', () => ({
+jest.mock('@firebase/auth', () => ({
   createUserWithEmailAndPassword: jest.fn(),
   signInWithEmailAndPassword: jest.fn()
 }));
 
-jest.mock('firebase/firestore', () => ({
+jest.mock('@firebase/firestore', () => ({
   doc: jest.fn(() => 'user-doc'),
   serverTimestamp: jest.fn(() => 'server-timestamp'),
   setDoc: jest.fn()

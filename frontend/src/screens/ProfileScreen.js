@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import AppBackground from '../components/AppBackground';
 import ProfileInterestSummary from '../components/profile/ProfileInterestSummary';
 import ProfileMomentumCard from '../components/profile/ProfileMomentumCard';
 import ProfilePreviewCard from '../components/profile/ProfilePreviewCard';
@@ -95,7 +96,7 @@ const ProfileScreen = ({
       : 'No live hosted plans yet. Posting one nearby is the fastest way to activate your profile.';
 
   return (
-    <View style={styles.screen}>
+    <AppBackground style={styles.screen}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
         <View style={styles.hero}>
           <View style={styles.heroCopy}>
@@ -148,14 +149,13 @@ const ProfileScreen = ({
 
         <ProfileInterestSummary favoriteActivities={favoriteActivities} />
       </ScrollView>
-    </View>
+    </AppBackground>
   );
 };
 
 const styles = StyleSheet.create({
   screen: {
-    flex: 1,
-    backgroundColor: '#F3F7F6'
+    flex: 1
   },
   content: {
     padding: 20,

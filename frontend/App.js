@@ -1,10 +1,9 @@
-import 'react-native-gesture-handler';
 import React, { useEffect, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { onAuthStateChanged } from 'firebase/auth';
-import { doc, onSnapshot } from 'firebase/firestore';
+import { onAuthStateChanged } from '@firebase/auth';
+import { doc, onSnapshot } from '@firebase/firestore';
 import AuthScreen from './src/screens/AuthScreen';
 import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
 import { auth, db } from './src/firebase/config';

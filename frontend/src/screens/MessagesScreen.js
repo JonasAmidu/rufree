@@ -1,5 +1,6 @@
 import React, { useMemo } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import AppBackground from '../components/AppBackground';
 import MessageHeroCard from '../components/messages/MessageHeroCard';
 import ConversationPreviewCard from '../components/messages/ConversationPreviewCard';
 import EmptyMessagesState from '../components/messages/EmptyMessagesState';
@@ -55,51 +56,52 @@ const MessagesScreen = ({
   const hasThreads = threads.length > 0;
 
   return (
-    <ScrollView contentContainerStyle={styles.container} style={styles.screen}>
-      <View style={styles.header}>
-        <Text style={styles.eyebrow}>Messages</Text>
-        <Text style={styles.title}>Keep the momentum going once people say yes.</Text>
-        <Text style={styles.subtitle}>
-          RuFree messaging should feel like the bridge between finding someone nearby and meeting up
-          in real life.
-        </Text>
-      </View>
-
-      <MessageHeroCard
-        activityMatches={metrics.activityMatches}
-        availableNowCount={metrics.availableNowCount}
-        unreadCount={metrics.unreadCount}
-      />
-
-      <View style={styles.sectionHeader}>
-        <Text style={styles.sectionTitle}>Your live circles</Text>
-        <Text style={styles.sectionCaption}>Built for fast replies and activity-led plans.</Text>
-      </View>
-
-      {hasThreads ? (
-        <View style={styles.threadList}>
-          {threads.map((thread) => (
-            <ConversationPreviewCard key={thread.id} onPress={onOpenThread} thread={thread} />
-          ))}
+    <AppBackground>
+      <ScrollView contentContainerStyle={styles.container} style={styles.screen}>
+        <View style={styles.header}>
+          <Text style={styles.eyebrow}>Messages</Text>
+          <Text style={styles.title}>Keep the momentum going once people say yes.</Text>
+          <Text style={styles.subtitle}>
+            RuFree messaging should feel like the bridge between finding someone nearby and meeting up
+            in real life.
+          </Text>
         </View>
-      ) : (
-        <EmptyMessagesState onPrimaryAction={onFindPeople} />
-      )}
 
-      <View style={styles.guidanceCard}>
-        <Text style={styles.guidanceTitle}>What this should become</Text>
-        <Text style={styles.guidanceBody}>
-          Conversations should attach to an activity, show who is still available, and make it
-          easy to move into a meetup without a long back-and-forth.
-        </Text>
-      </View>
-    </ScrollView>
+        <MessageHeroCard
+          activityMatches={metrics.activityMatches}
+          availableNowCount={metrics.availableNowCount}
+          unreadCount={metrics.unreadCount}
+        />
+
+        <View style={styles.sectionHeader}>
+          <Text style={styles.sectionTitle}>Your live circles</Text>
+          <Text style={styles.sectionCaption}>Built for fast replies and activity-led plans.</Text>
+        </View>
+
+        {hasThreads ? (
+          <View style={styles.threadList}>
+            {threads.map((thread) => (
+              <ConversationPreviewCard key={thread.id} onPress={onOpenThread} thread={thread} />
+            ))}
+          </View>
+        ) : (
+          <EmptyMessagesState onPrimaryAction={onFindPeople} />
+        )}
+
+        <View style={styles.guidanceCard}>
+          <Text style={styles.guidanceTitle}>What this should become</Text>
+          <Text style={styles.guidanceBody}>
+            Conversations should attach to an activity, show who is still available, and make it
+            easy to move into a meetup without a long back-and-forth.
+          </Text>
+        </View>
+      </ScrollView>
+    </AppBackground>
   );
 };
 
 const styles = StyleSheet.create({
   screen: {
-    backgroundColor: '#F3F8FA',
     flex: 1
   },
   container: {

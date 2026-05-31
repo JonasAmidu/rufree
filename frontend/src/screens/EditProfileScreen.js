@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { Alert } from 'react-native';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc } from '@firebase/firestore';
 import ProfileForm from '../components/profile/ProfileForm';
 import { db } from '../firebase/config';
 

@@ -11,8 +11,10 @@ import {
   TouchableOpacity,
   View
 } from 'react-native';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
-import { db } from '../firebase/config';
+import { signOut } from '@firebase/auth';
+import { doc, serverTimestamp, setDoc } from '@firebase/firestore';
+import AppBackground from '../components/AppBackground';
+import { auth, db } from '../firebase/config';
 import { ACTIVITY_OPTIONS } from '../utils/activityOptions';
 
 const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
@@ -74,22 +76,46 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
       Alert.alert('Profile saved', 'Your profile is ready. Let’s find your people.');
     } catch (error) {
       console.error('Profile save error', error);
-      Alert.alert('Profile save failed', error.message || 'Please try again.');
+      const targetUid = user?.uid || 'missing-user-uid';
+      const authUid = auth.currentUser?.uid || 'missing-auth-current-user';
+
+      Alert.alert(
+        'Profile save failed',
+        [
+          error.code || 'unknown-error',
+          error.message || 'Please try again.',
+          `Path: users/${targetUid}`,
+          `Auth UID: ${authUid}`
+        ].join('\n')
+      );
     } finally {
       setLoading(false);
     }
   };
 
+  const handleSignOut = async () => {
+    setLoading(true);
+
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Profile setup sign out error', error);
+      Alert.alert('Sign out failed', error.message || 'Please try again.');
+      setLoading(false);
+    }
+  };
+
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      style={styles.flex}
-    >
-      <ScrollView contentContainerStyle={styles.container}>
-        <Text style={styles.title}>Build Your RuFree Profile</Text>
-        <Text style={styles.subtitle}>
-          Add a photo, tell people who you are, and choose activities you would actually say yes to.
-        </Text>
+    <AppBackground>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        style={styles.flex}
+      >
+        <ScrollView contentContainerStyle={styles.container}>
+          <Text style={styles.title}>Build Your RuFree Profile</Text>
+          <Text style={styles.subtitle}>
+            Add a photo, tell people who you are, and choose activities you would actually say yes to.
+          </Text>
 
         <View style={styles.previewCard}>
           {photoUrl.trim() ? (
@@ -160,8 +186,18 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
             {loading ? 'Saving...' : 'Save Profile'}
           </Text>
         </TouchableOpacity>
-      </ScrollView>
-    </KeyboardAvoidingView>
+
+        <TouchableOpacity
+          testID="profile-setup-sign-out-button"
+          style={styles.signOutButton}
+          onPress={handleSignOut}
+          disabled={loading}
+        >
+          <Text style={styles.signOutButtonText}>Sign out</Text>
+        </TouchableOpacity>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </AppBackground>
   );
 };
 
@@ -170,8 +206,7 @@ const styles = StyleSheet.create({
     flex: 1
   },
   container: {
-    padding: 24,
-    backgroundColor: '#FFF0E0'
+    padding: 24
   },
   title: {
     fontSize: 32,
@@ -279,6 +314,19 @@ const styles = StyleSheet.create({
     color: '#4D3425',
     fontSize: 18,
     fontWeight: 'bold'
+  },
+  signOutButton: {
+    alignItems: 'center',
+    borderColor: '#D8BFA6',
+    borderRadius: 14,
+    borderWidth: 1,
+    marginBottom: 20,
+    paddingVertical: 14
+  },
+  signOutButtonText: {
+    color: '#66574A',
+    fontSize: 16,
+    fontWeight: '700'
   }
 });
 

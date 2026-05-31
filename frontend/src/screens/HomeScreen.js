@@ -14,10 +14,10 @@ import {
   View
 } from 'react-native';
 import * as Location from 'expo-location';
-import { signOut } from 'firebase/auth';
+import { signOut } from '@firebase/auth';
 import ActivityComposer from '../components/activity/ActivityComposer';
 import EditProfileScreen from './EditProfileScreen';
-import { collection, doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { collection, doc, onSnapshot, setDoc } from '@firebase/firestore';
 import { auth, db } from '../firebase/config';
 import {
   calculateDistanceKm,

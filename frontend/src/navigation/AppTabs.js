@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { collection, onSnapshot } from 'firebase/firestore';
+import { collection, onSnapshot } from '@firebase/firestore';
 import { db } from '../firebase/config';
 import HomeScreen from '../screens/HomeScreen';
 import CreateActivityScreen from '../screens/CreateActivityScreen';

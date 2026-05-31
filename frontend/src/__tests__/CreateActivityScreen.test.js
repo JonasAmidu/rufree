@@ -1,10 +1,10 @@
 import React from 'react';
 import { Alert } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import { serverTimestamp } from 'firebase/firestore';
+import { serverTimestamp } from '@firebase/firestore';
 import CreateActivityScreen, { buildCreateActivityPayload } from '../screens/CreateActivityScreen';
 
-jest.mock('firebase/firestore', () => ({
+jest.mock('@firebase/firestore', () => ({
   serverTimestamp: jest.fn(() => 'server-timestamp')
 }));
 

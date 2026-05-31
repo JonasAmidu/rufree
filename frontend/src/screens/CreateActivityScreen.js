@@ -8,7 +8,8 @@ import {
   Text,
   View
 } from 'react-native';
-import { serverTimestamp } from 'firebase/firestore';
+import { serverTimestamp } from '@firebase/firestore';
+import AppBackground from '../components/AppBackground';
 import ActivityComposer from '../components/activity/ActivityComposer';
 import { auth, db } from '../firebase/config';
 import { createActivity } from '../utils/activityFeed';
@@ -78,35 +79,36 @@ const CreateActivityScreen = ({
   };
 
   return (
-    <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-      style={styles.flex}
-    >
-      <ScrollView contentContainerStyle={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Create a live activity</Text>
-          <Text style={styles.subtitle}>
-            RuFree works best when the invite is simple, local, and easy to join fast.
-          </Text>
-        </View>
+    <AppBackground>
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.flex}
+      >
+        <ScrollView contentContainerStyle={styles.container}>
+          <View style={styles.header}>
+            <Text style={styles.title}>Create a live activity</Text>
+            <Text style={styles.subtitle}>
+              RuFree works best when the invite is simple, local, and easy to join fast.
+            </Text>
+          </View>
 
-        <View style={styles.guidelineCard}>
-          <Text style={styles.guidelineTitle}>A strong post has three things</Text>
-          <Text style={styles.guidelineBody}>1. A real activity someone can picture immediately.</Text>
-          <Text style={styles.guidelineBody}>2. A meetup spot nearby.</Text>
-          <Text style={styles.guidelineBody}>3. A start time that feels like now, not someday.</Text>
-        </View>
+          <View style={styles.guidelineCard}>
+            <Text style={styles.guidelineTitle}>A strong post has three things</Text>
+            <Text style={styles.guidelineBody}>1. A real activity someone can picture immediately.</Text>
+            <Text style={styles.guidelineBody}>2. A meetup spot nearby.</Text>
+            <Text style={styles.guidelineBody}>3. A start time that feels like now, not someday.</Text>
+          </View>
 
-        <ActivityComposer onSubmit={handleSubmit} onCancel={onCancel} submitting={submitting} />
-      </ScrollView>
-    </KeyboardAvoidingView>
+          <ActivityComposer onSubmit={handleSubmit} onCancel={onCancel} submitting={submitting} />
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </AppBackground>
   );
 };
 
 const styles = StyleSheet.create({
   flex: {
-    flex: 1,
-    backgroundColor: '#F3F8FA'
+    flex: 1
   },
   container: {
     padding: 24,

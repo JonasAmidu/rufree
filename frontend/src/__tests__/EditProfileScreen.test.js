@@ -1,10 +1,10 @@
 import React from 'react';
 import { Alert } from 'react-native';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
-import { doc, serverTimestamp, setDoc } from 'firebase/firestore';
+import { doc, serverTimestamp, setDoc } from '@firebase/firestore';
 import EditProfileScreen from '../screens/EditProfileScreen';
 
-jest.mock('firebase/firestore', () => ({
+jest.mock('@firebase/firestore', () => ({
   doc: jest.fn(() => 'user-doc'),
   serverTimestamp: jest.fn(() => 'server-timestamp'),
   setDoc: jest.fn()
