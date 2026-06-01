@@ -5,6 +5,7 @@ import ProfileScreen from '../screens/ProfileScreen';
 describe('ProfileScreen', () => {
   it('summarizes live profile stats and exposes the edit action', () => {
     const onEditProfile = jest.fn();
+    const onSignOut = jest.fn();
     const activities = [
       {
         id: 'hosted-1',
@@ -34,6 +35,7 @@ describe('ProfileScreen', () => {
         activities={activities}
         nearbyCount={6}
         onEditProfile={onEditProfile}
+        onSignOut={onSignOut}
       />
     );
 
@@ -48,6 +50,9 @@ describe('ProfileScreen', () => {
 
     fireEvent.press(getByTestId('profile-edit-cta'));
     expect(onEditProfile).toHaveBeenCalledTimes(1);
+
+    fireEvent.press(getByTestId('profile-sign-out-button'));
+    expect(onSignOut).toHaveBeenCalledTimes(1);
   });
 
   it('shows fallback guidance when the profile is still sparse', () => {

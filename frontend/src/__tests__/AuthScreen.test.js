@@ -112,6 +112,6 @@ describe('AuthScreen', () => {
       );
     });
 
-    expect(Alert.alert).toHaveBeenCalledWith('Success', 'Logged in successfully.');
+    expect(Alert.alert).not.toHaveBeenCalled();
   });
 });

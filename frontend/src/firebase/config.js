@@ -1,10 +1,6 @@
-import { app, db, firebaseConfig } from './firebaseCore';
+import { app, db } from './firebaseCore';
+import { getAuth } from '@firebase/auth';
 
-const firebaseApp = require('@firebase/app');
-const firebaseAuth = require('@firebase/auth');
-
-const authApp =
-  firebaseApp.getApps().length > 0 ? firebaseApp.getApp() : firebaseApp.initializeApp(firebaseConfig);
-const auth = firebaseAuth.getAuth(authApp);
+const auth = getAuth(app);
 
 export { app, auth, db };

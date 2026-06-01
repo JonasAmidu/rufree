@@ -40,7 +40,9 @@ const ProfileScreen = ({
   userProfile,
   activities = [],
   nearbyCount = 0,
-  onEditProfile
+  onEditProfile,
+  onSignOut,
+  signingOut = false
 }) => {
   const favoriteActivities = Array.isArray(userProfile?.favoriteActivities)
     ? userProfile.favoriteActivities
@@ -107,13 +109,32 @@ const ProfileScreen = ({
             </Text>
           </View>
 
-          <Pressable
-            testID="profile-edit-cta"
-            style={({ pressed }) => [styles.editButton, pressed && styles.buttonPressed]}
-            onPress={onEditProfile}
-          >
-            <Text style={styles.editButtonText}>Edit profile</Text>
-          </Pressable>
+          <View style={styles.heroActions}>
+            <Pressable
+              testID="profile-edit-cta"
+              style={({ pressed }) => [styles.editButton, pressed && styles.buttonPressed]}
+              onPress={onEditProfile}
+            >
+              <Text style={styles.editButtonText}>Edit profile</Text>
+            </Pressable>
+
+            {onSignOut ? (
+              <Pressable
+                testID="profile-sign-out-button"
+                style={({ pressed }) => [
+                  styles.signOutButton,
+                  signingOut && styles.buttonDisabled,
+                  pressed && !signingOut && styles.buttonPressed
+                ]}
+                onPress={onSignOut}
+                disabled={signingOut}
+              >
+                <Text style={styles.signOutButtonText}>
+                  {signingOut ? 'Signing out...' : 'Sign out'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
 
         <ProfilePreviewCard {...profileIdentity} />
@@ -172,6 +193,10 @@ const styles = StyleSheet.create({
   heroCopy: {
     flex: 1
   },
+  heroActions: {
+    alignItems: 'flex-end',
+    gap: 10
+  },
   eyebrow: {
     color: '#0F9F90',
     fontSize: 12,
@@ -205,6 +230,23 @@ const styles = StyleSheet.create({
   },
   buttonPressed: {
     opacity: 0.9
+  },
+  buttonDisabled: {
+    opacity: 0.6
+  },
+  signOutButton: {
+    borderRadius: 999,
+    borderColor: '#C8D8D5',
+    borderWidth: 1,
+    backgroundColor: '#FFFFFF',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    alignSelf: 'flex-start'
+  },
+  signOutButtonText: {
+    color: '#31545B',
+    fontSize: 14,
+    fontWeight: '800'
   },
   availabilityCard: {
     backgroundColor: '#FFF7EE',

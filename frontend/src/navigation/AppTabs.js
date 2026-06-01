@@ -2,8 +2,9 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Alert, Modal } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { signOut } from '@firebase/auth';
 import { collection, onSnapshot } from '@firebase/firestore';
-import { db } from '../firebase/config';
+import { auth, db } from '../firebase/config';
 import HomeScreen from '../screens/HomeScreen';
 import CreateActivityScreen from '../screens/CreateActivityScreen';
 import EditProfileScreen from '../screens/EditProfileScreen';
@@ -25,6 +26,7 @@ const AppTabs = ({ user, userProfile }) => {
   const [activities, setActivities] = useState([]);
   const [allUsers, setAllUsers] = useState([]);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
     const unsubscribeActivities = onSnapshot(
@@ -77,6 +79,18 @@ const AppTabs = ({ user, userProfile }) => {
       return typeof distanceKm === 'number' && distanceKm <= PROFILE_RADIUS_KM;
     }).length;
   }, [allUsers, user.uid, userProfile?.location]);
+
+  const handleSignOut = async () => {
+    setSigningOut(true);
+
+    try {
+      await signOut(auth);
+    } catch (error) {
+      console.error('Profile tab sign out error', error);
+      Alert.alert('Sign out failed', error.message || 'Please try again.');
+      setSigningOut(false);
+    }
+  };
 
   return (
     <>
@@ -146,6 +160,8 @@ const AppTabs = ({ user, userProfile }) => {
               activities={activities}
               nearbyCount={nearbyCount}
               onEditProfile={() => setShowEditProfileModal(true)}
+              onSignOut={handleSignOut}
+              signingOut={signingOut}
               user={user}
               userProfile={userProfile}
             />

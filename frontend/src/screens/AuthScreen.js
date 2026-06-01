@@ -33,7 +33,6 @@ const AuthScreen = () => {
     try {
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email.trim(), password);
-        Alert.alert('Success', 'Logged in successfully.');
       } else {
         const userCredential = await createUserWithEmailAndPassword(auth, email.trim(), password);
 
