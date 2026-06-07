@@ -1,5 +1,6 @@
 import {
   calculateDistanceKm,
+  createActivity,
   enrichActivities,
   fetchActivities,
   filterActivities,
@@ -19,6 +20,7 @@ import {
 } from '@firebase/firestore';
 
 jest.mock('@firebase/firestore', () => ({
+  addDoc: jest.fn(() => ({ id: 'new-post' })),
   arrayRemove: jest.fn((value) => ({ type: 'remove', value })),
   arrayUnion: jest.fn((value) => ({ type: 'union', value })),
   collection: jest.fn(() => 'posts-collection'),
@@ -33,6 +35,31 @@ jest.mock('@firebase/firestore', () => ({
 describe('fetchActivities', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+  });
+
+  it('creates activities with Firestore-compatible dates and counters', async () => {
+    const { addDoc } = require('@firebase/firestore');
+
+    await expect(
+      createActivity(
+        { name: 'db-instance' },
+        {
+          activity: 'Coffee',
+          startTime: '2026-05-08T18:30:00.000Z',
+          availableUntil: null
+        }
+      )
+    ).resolves.toBe('new-post');
+
+    expect(addDoc).toHaveBeenCalledWith('posts-collection', {
+      activity: 'Coffee',
+      startTime: new Date('2026-05-08T18:30:00.000Z'),
+      availableUntil: null,
+      likedBy: [],
+      likesCount: 0,
+      interestedUsers: [],
+      interestedCount: 0
+    });
   });
 
   it('returns an empty list when no activities exist', async () => {

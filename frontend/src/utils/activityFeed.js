@@ -12,7 +12,7 @@ import {
   updateDoc
 } from '@firebase/firestore';
 
-const toDate = (value) => {
+export const toDate = (value) => {
   if (!value) {
     return null;
   }
@@ -115,6 +115,7 @@ export const enrichActivities = (
         : [];
 
     const startTime = toDate(activity.startTime);
+    const availableUntil = toDate(activity.availableUntil);
     const now = new Date();
     const distanceKm = findActivityDistance(activity, currentLocation, nearbyUsersById);
     const interestMatches = collectInterestMatches(activity, favoriteActivities);
@@ -137,8 +138,9 @@ export const enrichActivities = (
       distanceLabel:
         typeof distanceKm === 'number' ? `${distanceKm.toFixed(1)} km away` : 'Near your area',
       interestMatches,
+      availableUntil,
       availableNow:
-        activity.isUrgent ||
+        (activity.isUrgent && (!availableUntil || availableUntil.getTime() > now.getTime())) ||
         (typeof hoursUntilStart === 'number' && hoursUntilStart >= -2 && hoursUntilStart <= 6)
     };
   });
@@ -228,10 +230,15 @@ export const createActivity = async (db, activityData) => {
   const postsRef = collection(db, 'posts');
   const docRef = await addDoc(postsRef, {
     ...activityData,
+    startTime: normalizePostDate(activityData.startTime),
+    availableUntil: toDate(activityData.availableUntil),
     likedBy: [],
     likesCount: 0,
-    interestedUsers: []
+    interestedUsers: [],
+    interestedCount: 0
   });
 
   return docRef.id;
 };
+
+const normalizePostDate = (value, fallback = new Date()) => toDate(value) || fallback;

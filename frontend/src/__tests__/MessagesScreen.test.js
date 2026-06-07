@@ -20,9 +20,9 @@ describe('MessagesScreen', () => {
       <MessagesScreen onOpenThread={onOpenThread} threads={DEFAULT_MESSAGE_THREADS} />
     );
 
-    expect(getByText('Your live circles')).toBeTruthy();
+    expect(getByText('Your plans')).toBeTruthy();
     expect(getByText('Maya')).toBeTruthy();
-    expect(getByText('Keep the momentum going once people say yes.')).toBeTruthy();
+    expect(getByText('Chats start from real plans.')).toBeTruthy();
 
     fireEvent.press(getByTestId('message-thread-coffee-maya'));
     expect(onOpenThread).toHaveBeenCalledWith(DEFAULT_MESSAGE_THREADS[0]);

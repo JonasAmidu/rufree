@@ -49,6 +49,7 @@ describe('CreateActivityScreen', () => {
       creatorName: 'Jonas',
       createdAt: 'server-timestamp',
       isUrgent: true,
+      startTime: new Date('2026-05-08T18:30:00.000Z'),
       location: {
         name: 'Soho Coffee House',
         latitude: 51.5,
@@ -56,6 +57,7 @@ describe('CreateActivityScreen', () => {
       },
       tags: ['coffee chats']
     });
+    expect(payload.availableUntil).toBeInstanceOf(Date);
   });
 
   it('calls the submit callback and shows success feedback', async () => {

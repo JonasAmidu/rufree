@@ -38,4 +38,28 @@ describe('ProfileForm', () => {
       });
     });
   });
+
+  it('allows bio and photo URL to stay optional', async () => {
+    const onSave = jest.fn().mockResolvedValue();
+    const { getByTestId } = render(
+      <ProfileForm
+        initialValues={{
+          displayName: ' Sam '
+        }}
+        onSave={onSave}
+      />
+    );
+
+    fireEvent.press(getByTestId('profile-activity-Running'));
+    fireEvent.press(getByTestId('profile-save-button'));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith({
+        displayName: 'Sam',
+        bio: '',
+        photoUrl: '',
+        favoriteActivities: ['Running']
+      });
+    });
+  });
 });

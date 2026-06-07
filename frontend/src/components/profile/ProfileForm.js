@@ -22,17 +22,9 @@ const buildInitialState = (initialValues = {}) => ({
     : []
 });
 
-const validateValues = ({ displayName, bio, photoUrl, favoriteActivities }) => {
+const validateValues = ({ displayName, favoriteActivities }) => {
   if (!displayName.trim()) {
     return 'Add a display name so people know who is free.';
-  }
-
-  if (!bio.trim()) {
-    return 'Add a short bio so nearby people know your vibe.';
-  }
-
-  if (!photoUrl.trim()) {
-    return 'Add a photo URL for your profile card.';
   }
 
   if (favoriteActivities.length === 0) {
@@ -133,7 +125,7 @@ const ProfileForm = ({
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Photo URL</Text>
+          <Text style={styles.label}>Photo URL (optional)</Text>
           <TextInput
             testID="profile-photo-url-input"
             style={styles.input}
@@ -146,7 +138,7 @@ const ProfileForm = ({
         </View>
 
         <View style={styles.section}>
-          <Text style={styles.label}>Short bio</Text>
+          <Text style={styles.label}>Short bio (optional)</Text>
           <TextInput
             testID="profile-bio-input"
             style={[styles.input, styles.bioInput]}

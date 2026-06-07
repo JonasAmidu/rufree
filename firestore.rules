@@ -1,0 +1,259 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(uid) {
+      return signedIn() && request.auth.uid == uid;
+    }
+
+    function isNonEmptyString(value, maxLength) {
+      return value is string && value.size() > 0 && value.size() <= maxLength;
+    }
+
+    function isOptionalString(value, maxLength) {
+      return value == null || value is string && value.size() <= maxLength;
+    }
+
+    function isStringList(value, maxItems) {
+      return value is list
+        && value.size() <= maxItems;
+    }
+
+    function isActivityList(value) {
+      return isStringList(value, 12)
+        && value.hasOnly([
+          'Coffee Chats',
+          'Running',
+          'Gym Sessions',
+          'Hiking',
+          'Study Sessions',
+          'Brunch',
+          'Live Music',
+          'Tennis',
+          'Football',
+          'Board Games',
+          'Cinema',
+          'Dog Walks',
+          'Co-working'
+        ]);
+    }
+
+    function isTagList(value) {
+      return isStringList(value, 16)
+        && value.hasOnly([
+          'coffee chats',
+          'running',
+          'gym sessions',
+          'hiking',
+          'study sessions',
+          'brunch',
+          'live music',
+          'tennis',
+          'football',
+          'board games',
+          'cinema',
+          'dog walks',
+          'co-working'
+        ]);
+    }
+
+    function isLatLng(value) {
+      return value is map
+        && value.latitude is number
+        && value.longitude is number
+        && value.latitude >= -90
+        && value.latitude <= 90
+        && value.longitude >= -180
+        && value.longitude <= 180;
+    }
+
+    function isOptionalNumber(value) {
+      return value == null || value is number;
+    }
+
+    function validPostLocation(value) {
+      return value is map
+        && value.keys().hasOnly(['name', 'latitude', 'longitude'])
+        && isNonEmptyString(value.name, 120)
+        && (!('latitude' in value) || isOptionalNumber(value.latitude))
+        && (!('longitude' in value) || isOptionalNumber(value.longitude));
+    }
+
+    function validAvailability(value) {
+      return value is map
+        && value.keys().hasOnly(['isFreeNow', 'freeUntil', 'updatedAt'])
+        && value.isFreeNow is bool
+        && (value.freeUntil == null || value.freeUntil is timestamp)
+        && value.updatedAt is timestamp;
+    }
+
+    function validUserCreate(uid) {
+      return isSelf(uid)
+        && request.resource.data.uid == uid
+        && request.resource.data.email is string
+        && request.resource.data.keys().hasOnly([
+          'uid',
+          'email',
+          'displayName',
+          'bio',
+          'photoUrl',
+          'favoriteActivities',
+          'location',
+          'locationUpdatedAt',
+          'availability',
+          'createdAt',
+          'updatedAt'
+        ])
+        && isNonEmptyString(request.resource.data.displayName, 80)
+        && isOptionalString(request.resource.data.bio, 500)
+        && isOptionalString(request.resource.data.photoUrl, 500)
+        && (!('favoriteActivities' in request.resource.data)
+          || isActivityList(request.resource.data.favoriteActivities))
+        && (!('location' in request.resource.data) || isLatLng(request.resource.data.location))
+        && (!('locationUpdatedAt' in request.resource.data)
+          || request.resource.data.locationUpdatedAt is timestamp)
+        && (!('availability' in request.resource.data)
+          || validAvailability(request.resource.data.availability));
+    }
+
+    function validUserUpdate(uid) {
+      return isSelf(uid)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName',
+          'bio',
+          'photoUrl',
+          'favoriteActivities',
+          'location',
+          'locationUpdatedAt',
+          'availability',
+          'updatedAt'
+        ])
+        && (!('displayName' in request.resource.data)
+          || isNonEmptyString(request.resource.data.displayName, 80))
+        && (!('bio' in request.resource.data) || isOptionalString(request.resource.data.bio, 500))
+        && (!('photoUrl' in request.resource.data)
+          || isOptionalString(request.resource.data.photoUrl, 500))
+        && (!('favoriteActivities' in request.resource.data)
+          || isActivityList(request.resource.data.favoriteActivities))
+        && (!('location' in request.resource.data) || isLatLng(request.resource.data.location))
+        && (!('locationUpdatedAt' in request.resource.data)
+          || request.resource.data.locationUpdatedAt is timestamp)
+        && (!('availability' in request.resource.data)
+          || validAvailability(request.resource.data.availability));
+    }
+
+    function validPostCreate() {
+      return signedIn()
+        && request.resource.data.creatorId == request.auth.uid
+        && request.resource.data.keys().hasOnly([
+          'activity',
+          'location',
+          'startTime',
+          'availableUntil',
+          'isUrgent',
+          'createdAt',
+          'creatorId',
+          'creatorName',
+          'creatorPhotoUrl',
+          'tags',
+          'likedBy',
+          'likesCount',
+          'interestedUsers',
+          'interestedCount'
+        ])
+        && isNonEmptyString(request.resource.data.activity, 80)
+        && validPostLocation(request.resource.data.location)
+        && request.resource.data.startTime is timestamp
+        && (request.resource.data.availableUntil == null
+          || request.resource.data.availableUntil is timestamp)
+        && request.resource.data.isUrgent is bool
+        && request.resource.data.createdAt is timestamp
+        && isNonEmptyString(request.resource.data.creatorName, 80)
+        && isOptionalString(request.resource.data.creatorPhotoUrl, 500)
+        && isTagList(request.resource.data.tags)
+        && request.resource.data.likedBy == []
+        && request.resource.data.likesCount == 0
+        && request.resource.data.interestedUsers == []
+        && (!('interestedCount' in request.resource.data)
+          || request.resource.data.interestedCount == 0);
+    }
+
+    function onlyOwnReactionChanged() {
+      let changed = request.resource.data.diff(resource.data).affectedKeys();
+      return signedIn()
+        && changed.hasOnly(['likedBy', 'likesCount', 'interestedUsers', 'interestedCount'])
+        && request.resource.data.creatorId == resource.data.creatorId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && (
+          validSingleUserToggle('likedBy', 'likesCount')
+          || validSingleUserToggle('interestedUsers', 'interestedCount')
+        );
+    }
+
+    function validSingleUserToggle(listField, countField) {
+      let before = resource.data[listField];
+      let after = request.resource.data[listField];
+      let added = after.toSet().difference(before.toSet());
+      let removed = before.toSet().difference(after.toSet());
+
+      return before is list
+        && after is list
+        && request.resource.data[countField] is int
+        && request.resource.data[countField] == after.size()
+        && after.size() <= 200
+        && added.hasOnly([request.auth.uid])
+        && removed.hasOnly([request.auth.uid])
+        && added.size() + removed.size() == 1;
+    }
+
+    match /users/{uid} {
+      // Current app still requires signed-in discovery reads over users.
+      // Before launch, split exact location/email into private docs and query only public profiles.
+      allow read: if signedIn();
+      allow create: if validUserCreate(uid);
+      allow update: if validUserUpdate(uid);
+      allow delete: if isSelf(uid);
+    }
+
+    match /posts/{postId} {
+      allow read: if signedIn();
+      allow create: if validPostCreate();
+      allow update: if onlyOwnReactionChanged();
+      allow delete: if signedIn() && resource.data.creatorId == request.auth.uid;
+    }
+
+    match /reports/{reportId} {
+      allow create: if signedIn()
+        && request.resource.data.reporterId == request.auth.uid
+        && request.resource.data.targetType in ['user', 'post', 'message']
+        && isNonEmptyString(request.resource.data.targetId, 160)
+        && isNonEmptyString(request.resource.data.reason, 500)
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.status == 'open';
+      allow read, update, delete: if false;
+    }
+
+    match /blocks/{blockId} {
+      allow read: if signedIn() && resource.data.ownerId == request.auth.uid;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(['ownerId', 'blockedUserId', 'createdAt'])
+        && request.resource.data.ownerId == request.auth.uid
+        && isNonEmptyString(request.resource.data.blockedUserId, 160)
+        && request.resource.data.createdAt is timestamp;
+      allow update: if signedIn()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['blockedUserId'])
+        && request.resource.data.ownerId == request.auth.uid
+        && isNonEmptyString(request.resource.data.blockedUserId, 160);
+      allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

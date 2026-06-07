@@ -36,12 +36,13 @@ export const buildCreateActivityPayload = (values, { currentLocation, creatorPro
   creatorName: getCreatorName(user || auth.currentUser, creatorProfile),
   createdAt: serverTimestamp(),
   isUrgent: values.isUrgent,
+  availableUntil: values.isUrgent ? new Date(Date.now() + 60 * 60 * 1000) : null,
   location: {
     name: values.locationName,
     latitude: currentLocation?.latitude ?? creatorProfile?.location?.latitude ?? null,
     longitude: currentLocation?.longitude ?? creatorProfile?.location?.longitude ?? null
   },
-  startTime: values.startTime ? values.startTime.toISOString() : new Date().toISOString(),
+  startTime: values.startTime || new Date(),
   tags: [values.activity.toLowerCase()]
 });
 

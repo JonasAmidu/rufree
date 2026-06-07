@@ -48,7 +48,7 @@ export const buildMessageMetrics = (threads = []) => ({
 });
 
 const MessagesScreen = ({
-  threads = DEFAULT_MESSAGE_THREADS,
+  threads = [],
   onOpenThread,
   onFindPeople
 }) => {
@@ -60,10 +60,9 @@ const MessagesScreen = ({
       <ScrollView contentContainerStyle={styles.container} style={styles.screen}>
         <View style={styles.header}>
           <Text style={styles.eyebrow}>Messages</Text>
-          <Text style={styles.title}>Keep the momentum going once people say yes.</Text>
+          <Text style={styles.title}>Chats start from real plans.</Text>
           <Text style={styles.subtitle}>
-            RuFree messaging should feel like the bridge between finding someone nearby and meeting up
-            in real life.
+            Join or post an activity to open a nearby conversation.
           </Text>
         </View>
 
@@ -74,8 +73,8 @@ const MessagesScreen = ({
         />
 
         <View style={styles.sectionHeader}>
-          <Text style={styles.sectionTitle}>Your live circles</Text>
-          <Text style={styles.sectionCaption}>Built for fast replies and activity-led plans.</Text>
+          <Text style={styles.sectionTitle}>Your plans</Text>
+          <Text style={styles.sectionCaption}>Fast replies for meetups happening nearby.</Text>
         </View>
 
         {hasThreads ? (
@@ -88,13 +87,6 @@ const MessagesScreen = ({
           <EmptyMessagesState onPrimaryAction={onFindPeople} />
         )}
 
-        <View style={styles.guidanceCard}>
-          <Text style={styles.guidanceTitle}>What this should become</Text>
-          <Text style={styles.guidanceBody}>
-            Conversations should attach to an activity, show who is still available, and make it
-            easy to move into a meetup without a long back-and-forth.
-          </Text>
-        </View>
       </ScrollView>
     </AppBackground>
   );

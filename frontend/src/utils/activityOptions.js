@@ -19,9 +19,9 @@ export const isProfileComplete = (profile) => {
     return false;
   }
 
-  const hasBio = typeof profile.bio === 'string' && profile.bio.trim().length > 0;
-  const hasPhoto = typeof profile.photoUrl === 'string' && profile.photoUrl.trim().length > 0;
+  const hasDisplayName =
+    typeof profile.displayName === 'string' && profile.displayName.trim().length > 0;
   const hasActivities = Array.isArray(profile.favoriteActivities) && profile.favoriteActivities.length > 0;
 
-  return hasBio && hasPhoto && hasActivities;
+  return hasDisplayName && hasActivities;
 };

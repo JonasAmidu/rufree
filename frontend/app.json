@@ -7,6 +7,27 @@
       "ios",
       "android",
       "web"
+    ],
+    "ios": {
+      "bundleIdentifier": "com.rufree.app",
+      "infoPlist": {
+        "NSLocationWhenInUseUsageDescription": "RuFree uses your location to show nearby people and plans while you are using the app."
+      }
+    },
+    "android": {
+      "package": "com.rufree.app",
+      "permissions": [
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "RuFree uses your location to show nearby people and plans while you are using the app."
+        }
+      ]
     ]
   }
 }

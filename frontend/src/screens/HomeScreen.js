@@ -3,6 +3,7 @@ import {
   ActivityIndicator,
   Alert,
   Image,
+  ImageBackground,
   Modal,
   RefreshControl,
   ScrollView,
@@ -14,10 +15,11 @@ import {
   View
 } from 'react-native';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 import { signOut } from '@firebase/auth';
 import ActivityComposer from '../components/activity/ActivityComposer';
 import EditProfileScreen from './EditProfileScreen';
-import { collection, doc, onSnapshot, setDoc } from '@firebase/firestore';
+import { collection, doc, onSnapshot, serverTimestamp, setDoc } from '@firebase/firestore';
 import { auth, db } from '../firebase/config';
 import {
   calculateDistanceKm,
@@ -32,6 +34,7 @@ import {
 } from '../utils/activityFeed';
 
 const RADIUS_OPTIONS = [2, 5, 10, 25];
+const mapVisual = require('../../assets/nearby-map-visual.png');
 
 const ACTIVITY_EMOJIS = {
   coffee: '☕',
@@ -115,12 +118,26 @@ const HomeScreen = ({ user, userProfile }) => {
   const [activitiesReady, setActivitiesReady] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [availabilitySaving, setAvailabilitySaving] = useState(false);
+  const [isFreeNow, setIsFreeNow] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
   const [locationMessage, setLocationMessage] = useState('Checking your nearby radius...');
   const [userLocation, setUserLocation] = useState(null);
 
   const favoriteActivities = userProfile?.favoriteActivities || [];
+
+  useEffect(() => {
+    const availability = userProfile?.availability;
+    const freeUntil = availability?.freeUntil?.toDate
+      ? availability.freeUntil.toDate()
+      : availability?.freeUntil
+        ? new Date(availability.freeUntil)
+        : null;
+    const isStillFree = !freeUntil || freeUntil.getTime() > Date.now();
+
+    setIsFreeNow(Boolean(availability?.isFreeNow && isStillFree));
+  }, [userProfile?.availability]);
 
   const nearbyUsers = useMemo(() => {
     if (!userLocation) {
@@ -131,6 +148,14 @@ const HomeScreen = ({ user, userProfile }) => {
       .filter((person) => person.uid && person.uid !== user.uid)
       .map((person) => {
         const distanceKm = calculateDistanceKm(userLocation, person.location);
+        const freeUntil = person.availability?.freeUntil?.toDate
+          ? person.availability.freeUntil.toDate()
+          : person.availability?.freeUntil
+            ? new Date(person.availability.freeUntil)
+            : null;
+        const isPersonFreeNow = Boolean(
+          person.availability?.isFreeNow && (!freeUntil || freeUntil.getTime() > Date.now())
+        );
         const sharedInterests = favoriteActivities.filter((interest) =>
           Array.isArray(person.favoriteActivities) ? person.favoriteActivities.includes(interest) : false
         );
@@ -143,6 +168,7 @@ const HomeScreen = ({ user, userProfile }) => {
           bio: person.bio || '',
           favoriteActivities: person.favoriteActivities || [],
           sharedInterests,
+          isFreeNow: isPersonFreeNow,
           distanceKm,
           distanceLabel:
             typeof distanceKm === 'number' ? `${distanceKm.toFixed(1)} km away` : 'Near your area',
@@ -150,7 +176,13 @@ const HomeScreen = ({ user, userProfile }) => {
         };
       })
       .filter((person) => typeof person.distanceKm === 'number' && person.distanceKm <= radiusKm)
-      .sort((left, right) => left.distanceKm - right.distanceKm);
+      .sort((left, right) => {
+        if (left.isFreeNow !== right.isFreeNow) {
+          return left.isFreeNow ? -1 : 1;
+        }
+
+        return left.distanceKm - right.distanceKm;
+      });
   }, [allUsers, favoriteActivities, radiusKm, user.uid, userLocation]);
 
   const nearbyUsersById = useMemo(
@@ -230,22 +262,6 @@ const HomeScreen = ({ user, userProfile }) => {
     return [...peoplePins, ...activityPins].slice(0, 10);
   }, [nearbyUsers, radiusKm, userLocation, visibleActivities]);
 
-  const profileReady = Boolean(
-    userProfile?.displayName &&
-      userProfile?.bio &&
-      Array.isArray(favoriteActivities) &&
-      favoriteActivities.length > 0
-  );
-  const debugRows = [
-    { label: 'Signed in', value: user.email || user.uid },
-    { label: 'Profile ready', value: profileReady ? 'Yes' : 'Not yet' },
-    { label: 'Location', value: userLocation ? 'Detected' : 'Missing' },
-    { label: 'Radius', value: `${radiusKm} km` },
-    { label: 'Nearby people', value: String(nearbyUsers.length) },
-    { label: 'Visible activities', value: String(visibleActivities.length) },
-    { label: 'Available now', value: String(availableNowCount) }
-  ];
-
   const requestLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -271,7 +287,7 @@ const HomeScreen = ({ user, userProfile }) => {
         doc(db, 'users', user.uid),
         {
           location,
-          locationUpdatedAt: new Date()
+          locationUpdatedAt: serverTimestamp()
         },
         { merge: true }
       );
@@ -379,6 +395,34 @@ const HomeScreen = ({ user, userProfile }) => {
     }
   };
 
+  const handleToggleAvailability = async () => {
+    const nextValue = !isFreeNow;
+    const freeUntil = nextValue ? new Date(Date.now() + 60 * 60 * 1000) : null;
+
+    setAvailabilitySaving(true);
+    setIsFreeNow(nextValue);
+
+    try {
+      await setDoc(
+        doc(db, 'users', user.uid),
+        {
+          availability: {
+            isFreeNow: nextValue,
+            freeUntil,
+            updatedAt: serverTimestamp()
+          }
+        },
+        { merge: true }
+      );
+    } catch (error) {
+      console.error('Availability update error', error);
+      setIsFreeNow(!nextValue);
+      Alert.alert('Availability failed', 'We could not update your live status right now.');
+    } finally {
+      setAvailabilitySaving(false);
+    }
+  };
+
   const handleCreatePost = async (values) => {
     try {
       await createActivity(db, {
@@ -388,8 +432,9 @@ const HomeScreen = ({ user, userProfile }) => {
           ...(userLocation || userProfile?.location || {})
         },
         startTime: values.startTime || new Date(),
+        availableUntil: values.isUrgent ? new Date(Date.now() + 60 * 60 * 1000) : null,
         isUrgent: values.isUrgent,
-        createdAt: new Date(),
+        createdAt: serverTimestamp(),
         creatorId: user.uid,
         creatorName: userProfile?.displayName || user.email?.split('@')[0] || 'RuFree User',
         creatorPhotoUrl: userProfile?.photoUrl || '',
@@ -488,20 +533,24 @@ const HomeScreen = ({ user, userProfile }) => {
 
   const renderNearbyUser = (person) => (
     <View key={person.uid} style={styles.nearbyCard}>
-      {person.photoUrl ? (
-        <Image source={{ uri: person.photoUrl }} style={styles.nearbyAvatar} />
-      ) : (
-        <View style={[styles.nearbyAvatar, styles.nearbyAvatarFallback]}>
-          <Text style={styles.nearbyInitial}>{person.displayName.charAt(0).toUpperCase()}</Text>
+      <View style={styles.nearbyVisual}>
+        {person.photoUrl ? (
+          <Image source={{ uri: person.photoUrl }} style={styles.nearbyAvatar} />
+        ) : (
+          <View style={[styles.nearbyAvatar, styles.nearbyAvatarFallback]}>
+            <Text style={styles.nearbyInitial}>{person.displayName.charAt(0).toUpperCase()}</Text>
+          </View>
+        )}
+        <View style={[styles.nearbyStatusDot, !person.isFreeNow && styles.nearbyStatusDotMuted]} />
+        <View style={styles.nearbyDistanceBubble}>
+          <Ionicons color="#0B2C34" name="navigate" size={12} />
+          <Text style={styles.nearbyDistanceBubbleText}>{person.distanceLabel}</Text>
         </View>
-      )}
+      </View>
       <Text style={styles.nearbyName}>{person.displayName}</Text>
-      <Text style={styles.nearbyDistance}>{person.distanceLabel}</Text>
-      <Text style={styles.nearbyBio} numberOfLines={2}>
-        {person.bio || 'Open to meeting up right now.'}
-      </Text>
+      <Text style={styles.nearbyLiveText}>{person.isFreeNow ? 'Free now' : 'Nearby'}</Text>
       <View style={styles.matchTagRow}>
-        {person.sharedInterests.slice(0, 2).map((interest) => (
+        {(person.sharedInterests.length ? person.sharedInterests : person.favoriteActivities).slice(0, 2).map((interest) => (
           <View key={interest} style={styles.matchTag}>
             <Text style={styles.matchTagText}>{interest}</Text>
           </View>
@@ -545,11 +594,19 @@ const HomeScreen = ({ user, userProfile }) => {
                 </View>
               )}
             </View>
-            <Text style={styles.activityMeta}>{activity.distanceLabel}</Text>
-            <Text style={styles.activityMeta}>
-              {activity.location?.name || 'Location coming soon'} • {formatDate(activity.startTime)}
+            <View style={styles.activityVisualMetaRow}>
+              <View style={styles.activityVisualPill}>
+                <Ionicons color="#0D5255" name="navigate" size={14} />
+                <Text style={styles.activityVisualPillText}>{activity.distanceLabel}</Text>
+              </View>
+              <View style={styles.activityVisualPill}>
+                <Ionicons color="#0D5255" name="time" size={14} />
+                <Text style={styles.activityVisualPillText}>{formatDate(activity.startTime)}</Text>
+              </View>
+            </View>
+            <Text style={styles.activityMeta} numberOfLines={1}>
+              {activity.location?.name || 'Location coming soon'} by {activity.creatorName || 'RuFree user'}
             </Text>
-            <Text style={styles.activityMeta}>Hosted by {activity.creatorName || 'RuFree user'}</Text>
           </View>
         </View>
 
@@ -583,6 +640,15 @@ const HomeScreen = ({ user, userProfile }) => {
         </View>
 
         <View style={styles.participationRow}>
+          <View style={styles.participantStack}>
+            {[0, 1, 2].map((index) => (
+              <View key={index} style={[styles.participantDot, { marginLeft: index === 0 ? 0 : -8 }]}>
+                <Text style={styles.participantDotText}>
+                  {(participantPreview[index] || activity.creatorName || 'R').charAt(0).toUpperCase()}
+                </Text>
+              </View>
+            ))}
+          </View>
           <Text style={styles.participationText}>
             {interestedCount > 0
               ? `${interestedCount} joining now`
@@ -614,29 +680,90 @@ const HomeScreen = ({ user, userProfile }) => {
         <View style={styles.hero}>
           <View style={styles.heroHeaderRow}>
             <View style={styles.heroBrand}>
-              <Text style={styles.heroEyebrow}>Real people. Real-time activities.</Text>
               <Text style={styles.heroTitle}>RU FREE?</Text>
-              <Text style={styles.heroSubtitle}>
-                Find people available now and join things that match your energy, interests, and radius.
-              </Text>
+              <Text style={styles.heroSubtitle}>Meet nearby, right now.</Text>
             </View>
             <TouchableOpacity style={styles.signOutPill} onPress={handleSignOut} disabled={signingOut}>
-              <Text style={styles.signOutPillText}>{signingOut ? 'Signing out...' : 'Sign out'}</Text>
+              <Ionicons color="#D7EEF0" name={signingOut ? 'sync' : 'log-out-outline'} size={18} />
             </TouchableOpacity>
           </View>
 
-          <View style={styles.heroStatsRow}>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{availableNowCount}</Text>
-              <Text style={styles.heroStatLabel}>Available now</Text>
+          <TouchableOpacity
+            activeOpacity={0.88}
+            disabled={availabilitySaving}
+            onPress={handleToggleAvailability}
+            style={[styles.availabilityCard, isFreeNow && styles.availabilityCardActive]}
+          >
+            <View style={[styles.availabilityIcon, isFreeNow && styles.availabilityIconActive]}>
+              <Ionicons
+                color={isFreeNow ? '#062126' : '#A9FFF5'}
+                name={isFreeNow ? 'radio-button-on' : 'radio-button-off'}
+                size={22}
+              />
             </View>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{nearbyUsers.length}</Text>
-              <Text style={styles.heroStatLabel}>People nearby</Text>
+            <View style={styles.availabilityCopy}>
+              <Text style={[styles.availabilityTitle, isFreeNow && styles.availabilityTitleActive]}>
+                {isFreeNow ? "You're free now" : "I'm free now"}
+              </Text>
+              <Text style={[styles.availabilitySubtitle, isFreeNow && styles.availabilitySubtitleActive]}>
+                {isFreeNow ? 'Visible nearby for 1 hour' : 'Go live so nearby people can find you'}
+              </Text>
             </View>
-            <View style={styles.heroStatCard}>
-              <Text style={styles.heroStatValue}>{favoriteActivities.length}</Text>
-              <Text style={styles.heroStatLabel}>Your interests</Text>
+            <Ionicons color={isFreeNow ? '#062126' : '#A9FFF5'} name="chevron-forward" size={20} />
+          </TouchableOpacity>
+
+          <View style={styles.mapCardHero}>
+            <ImageBackground source={mapVisual} resizeMode="cover" style={styles.mapSurface} imageStyle={styles.mapVisualImage}>
+              <View style={styles.mapScrim} />
+              <View style={styles.mapRingOuter} />
+              <View style={styles.mapRingMiddle} />
+              <View style={styles.mapRingInner} />
+
+              {mapPins.map((pin) => (
+                <View
+                  key={pin.id}
+                  style={[
+                    styles.mapPin,
+                    pin.tone === 'activity' ? styles.mapPinActivity : styles.mapPinPerson,
+                    {
+                      top: `${pin.top}%`,
+                      left: `${pin.left}%`
+                    }
+                  ]}
+                >
+                  <Text style={styles.mapPinText}>{pin.glyph}</Text>
+                </View>
+              ))}
+
+              <View style={styles.mapCenterMarker}>
+                <View style={styles.mapCenterPulse} />
+                <View style={styles.mapCenterDot} />
+              </View>
+
+              {!userLocation && (
+                <View style={styles.mapPermissionCard}>
+                  <Ionicons color="#FFFFFF" name="location" size={26} />
+                  <Text style={styles.mapPermissionTitle}>Share location</Text>
+                  <TouchableOpacity style={styles.mapPermissionButton} onPress={() => loadHomeData({ silent: true })}>
+                    <Text style={styles.mapPermissionButtonText}>Pin me</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </ImageBackground>
+
+            <View style={styles.mapHudRow}>
+              <View style={styles.mapHudPill}>
+                <Text style={styles.mapHudValue}>{availableNowCount}</Text>
+                <Text style={styles.mapHudLabel}>now</Text>
+              </View>
+              <View style={styles.mapHudPill}>
+                <Text style={styles.mapHudValue}>{nearbyUsers.length}</Text>
+                <Text style={styles.mapHudLabel}>people</Text>
+              </View>
+              <View style={styles.mapHudPill}>
+                <Text style={styles.mapHudValue}>{radiusKm}</Text>
+                <Text style={styles.mapHudLabel}>km</Text>
+              </View>
             </View>
           </View>
         </View>
@@ -644,11 +771,11 @@ const HomeScreen = ({ user, userProfile }) => {
         <View style={styles.discoveryCard}>
           <View style={styles.discoveryHeader}>
             <View>
-              <Text style={styles.sectionEyebrow}>Nearby discovery</Text>
-              <Text style={styles.sectionTitle}>Within your radius</Text>
+              <Text style={styles.sectionEyebrow}>Filters</Text>
+              <Text style={styles.sectionTitle}>Tune the map</Text>
             </View>
             <TouchableOpacity style={styles.createButtonInline} onPress={() => setShowCreateModal(true)}>
-              <Text style={styles.createButtonInlineText}>Post activity</Text>
+              <Ionicons color="#FFFFFF" name="add" size={20} />
             </TouchableOpacity>
           </View>
 
@@ -678,25 +805,13 @@ const HomeScreen = ({ user, userProfile }) => {
 
           <View style={styles.toggleRow}>
             <View style={styles.toggleCard}>
-              <Text style={styles.toggleTitle}>Only available now</Text>
+              <Text style={styles.toggleTitle}>Now</Text>
               <Switch value={onlyAvailableNow} onValueChange={setOnlyAvailableNow} />
             </View>
             <View style={styles.toggleCard}>
-              <Text style={styles.toggleTitle}>Match my interests</Text>
+              <Text style={styles.toggleTitle}>Match</Text>
               <Switch value={onlyMatchingInterests} onValueChange={setOnlyMatchingInterests} />
             </View>
-          </View>
-        </View>
-
-        <View style={styles.debugCard}>
-          <Text style={styles.debugTitle}>Live verification</Text>
-          <View style={styles.debugGrid}>
-            {debugRows.map((item) => (
-              <View key={item.label} style={styles.debugPill}>
-                <Text style={styles.debugLabel}>{item.label}</Text>
-                <Text style={styles.debugValue}>{item.value}</Text>
-              </View>
-            ))}
           </View>
         </View>
 
@@ -734,53 +849,7 @@ const HomeScreen = ({ user, userProfile }) => {
         </View>
 
         <View style={styles.sectionBlock}>
-          <Text style={styles.sectionEyebrow}>Live map</Text>
-          <Text style={styles.sectionTitle}>See who is around you</Text>
-          <View style={styles.mapCard}>
-            <View style={styles.mapSurface}>
-              <View style={styles.mapRingOuter} />
-              <View style={styles.mapRingMiddle} />
-              <View style={styles.mapRingInner} />
-              <View style={styles.mapCrosshairVertical} />
-              <View style={styles.mapCrosshairHorizontal} />
-
-              {mapPins.map((pin) => (
-                <View
-                  key={pin.id}
-                  style={[
-                    styles.mapPin,
-                    pin.tone === 'activity' ? styles.mapPinActivity : styles.mapPinPerson,
-                    {
-                      top: `${pin.top}%`,
-                      left: `${pin.left}%`
-                    }
-                  ]}
-                >
-                  <Text style={styles.mapPinText}>{pin.glyph}</Text>
-                </View>
-              ))}
-
-              <View style={styles.mapCenterMarker}>
-                <View style={styles.mapCenterDot} />
-              </View>
-            </View>
-
-            <View style={styles.mapLegendRow}>
-              <View style={styles.mapLegendItem}>
-                <View style={[styles.mapLegendSwatch, styles.mapLegendSwatchPerson]} />
-                <Text style={styles.mapLegendText}>People nearby</Text>
-              </View>
-              <View style={styles.mapLegendItem}>
-                <View style={[styles.mapLegendSwatch, styles.mapLegendSwatchActivity]} />
-                <Text style={styles.mapLegendText}>Activities</Text>
-              </View>
-              <Text style={styles.mapRadiusLabel}>{radiusKm} km radius</Text>
-            </View>
-          </View>
-        </View>
-
-        <View style={styles.sectionBlock}>
-          <Text style={styles.sectionEyebrow}>People available now</Text>
+          <Text style={styles.sectionEyebrow}>Available</Text>
           <Text style={styles.sectionTitle}>Nearby people</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.nearbyRow}>
             {nearbyUsers.length > 0 ? (
@@ -869,9 +938,9 @@ const styles = StyleSheet.create({
     fontSize: 15
   },
   hero: {
-    paddingTop: 58,
-    paddingHorizontal: 20,
-    paddingBottom: 26,
+    paddingTop: 54,
+    paddingHorizontal: 16,
+    paddingBottom: 18,
     backgroundColor: '#07141B'
   },
   heroHeaderRow: {
@@ -901,19 +970,67 @@ const styles = StyleSheet.create({
     color: '#D8E9EC',
     fontSize: 16,
     lineHeight: 24,
-    marginTop: 12
+    marginTop: 4
   },
   signOutPill: {
     borderWidth: 1,
     borderColor: '#1C3C46',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10,
-    backgroundColor: '#10232C'
+    borderRadius: 18,
+    width: 42,
+    height: 42,
+    backgroundColor: '#10232C',
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   signOutPillText: {
     color: '#D7EEF0',
     fontWeight: '700'
+  },
+  availabilityCard: {
+    marginTop: 18,
+    borderRadius: 24,
+    backgroundColor: '#10232C',
+    borderWidth: 1,
+    borderColor: '#1D4652',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  availabilityCardActive: {
+    backgroundColor: '#A9FFF5',
+    borderColor: '#A9FFF5'
+  },
+  availabilityIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#173847',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12
+  },
+  availabilityIconActive: {
+    backgroundColor: '#FFFFFF'
+  },
+  availabilityCopy: {
+    flex: 1
+  },
+  availabilityTitle: {
+    color: '#FFFFFF',
+    fontSize: 17,
+    fontWeight: '900'
+  },
+  availabilityTitleActive: {
+    color: '#062126'
+  },
+  availabilitySubtitle: {
+    color: '#A8C6CB',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 3
+  },
+  availabilitySubtitleActive: {
+    color: '#0D5255'
   },
   heroStatsRow: {
     flexDirection: 'row',
@@ -938,7 +1055,7 @@ const styles = StyleSheet.create({
     fontSize: 13
   },
   discoveryCard: {
-    marginTop: -6,
+    marginTop: 4,
     marginHorizontal: 16,
     backgroundColor: '#F7F2EA',
     borderRadius: 28,
@@ -964,9 +1081,11 @@ const styles = StyleSheet.create({
   },
   createButtonInline: {
     backgroundColor: '#0D1C24',
-    borderRadius: 999,
-    paddingHorizontal: 14,
-    paddingVertical: 10
+    borderRadius: 18,
+    width: 42,
+    height: 42,
+    justifyContent: 'center',
+    alignItems: 'center'
   },
   createButtonInlineText: {
     color: '#FFFFFF',
@@ -1011,7 +1130,8 @@ const styles = StyleSheet.create({
     color: '#08232A'
   },
   toggleRow: {
-    marginTop: 16
+    marginTop: 16,
+    flexDirection: 'row'
   },
   toggleCard: {
     backgroundColor: '#FFFFFF',
@@ -1021,52 +1141,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 10
+    marginRight: 10,
+    flex: 1
   },
   toggleTitle: {
     color: '#10212A',
     fontWeight: '700',
     fontSize: 15
-  },
-  debugCard: {
-    marginHorizontal: 16,
-    marginTop: 18,
-    backgroundColor: '#10232C',
-    borderRadius: 24,
-    padding: 16,
-    borderWidth: 1,
-    borderColor: '#173847'
-  },
-  debugTitle: {
-    color: '#FFFFFF',
-    fontSize: 18,
-    fontWeight: '800',
-    marginBottom: 12
-  },
-  debugGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap'
-  },
-  debugPill: {
-    width: '48%',
-    backgroundColor: '#173847',
-    borderRadius: 18,
-    paddingHorizontal: 12,
-    paddingVertical: 12,
-    marginRight: 10,
-    marginBottom: 10
-  },
-  debugLabel: {
-    color: '#89B9C1',
-    fontSize: 12,
-    fontWeight: '700',
-    marginBottom: 4,
-    textTransform: 'uppercase'
-  },
-  debugValue: {
-    color: '#FFFFFF',
-    fontSize: 15,
-    fontWeight: '800'
   },
   profileStrip: {
     marginHorizontal: 16,
@@ -1076,21 +1157,28 @@ const styles = StyleSheet.create({
     padding: 16,
     flexDirection: 'row'
   },
-  mapCard: {
-    marginTop: 12,
+  mapCardHero: {
+    marginTop: 18,
     backgroundColor: '#071923',
     borderRadius: 28,
-    padding: 16,
+    padding: 10,
     borderWidth: 1,
     borderColor: '#12303C'
   },
   mapSurface: {
-    height: 280,
+    height: 390,
     borderRadius: 22,
     backgroundColor: '#0D2530',
     overflow: 'hidden',
     justifyContent: 'center',
     alignItems: 'center'
+  },
+  mapVisualImage: {
+    borderRadius: 22
+  },
+  mapScrim: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(4, 15, 24, 0.14)'
   },
   mapRingOuter: {
     position: 'absolute',
@@ -1129,17 +1217,27 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(132, 173, 184, 0.16)'
   },
   mapCenterMarker: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    backgroundColor: 'rgba(23, 214, 197, 0.2)',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(23, 214, 197, 0.18)',
     justifyContent: 'center',
-    alignItems: 'center'
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.55)'
+  },
+  mapCenterPulse: {
+    position: 'absolute',
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    borderWidth: 1,
+    borderColor: 'rgba(23, 214, 197, 0.5)'
   },
   mapCenterDot: {
-    width: 12,
-    height: 12,
-    borderRadius: 6,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
     backgroundColor: '#17D6C5'
   },
   mapPin: {
@@ -1165,6 +1263,59 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '800',
     color: '#10212A'
+  },
+  mapPermissionCard: {
+    position: 'absolute',
+    bottom: 18,
+    left: 18,
+    right: 18,
+    borderRadius: 22,
+    backgroundColor: 'rgba(7, 20, 27, 0.82)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.18)',
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  mapPermissionTitle: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '900',
+    flex: 1,
+    marginLeft: 10
+  },
+  mapPermissionButton: {
+    borderRadius: 999,
+    backgroundColor: '#17D6C5',
+    paddingHorizontal: 14,
+    paddingVertical: 9
+  },
+  mapPermissionButtonText: {
+    color: '#052227',
+    fontWeight: '900'
+  },
+  mapHudRow: {
+    flexDirection: 'row',
+    marginTop: 10
+  },
+  mapHudPill: {
+    flex: 1,
+    borderRadius: 18,
+    backgroundColor: '#10232C',
+    paddingVertical: 10,
+    alignItems: 'center',
+    marginRight: 8
+  },
+  mapHudValue: {
+    color: '#FFFFFF',
+    fontSize: 20,
+    fontWeight: '900'
+  },
+  mapHudLabel: {
+    color: '#A8C6CB',
+    fontSize: 12,
+    fontWeight: '800',
+    marginTop: 2
   },
   mapLegendRow: {
     marginTop: 14,
@@ -1266,17 +1417,25 @@ const styles = StyleSheet.create({
     paddingBottom: 4
   },
   nearbyCard: {
-    width: 220,
+    width: 172,
     backgroundColor: '#FFF6ED',
     borderRadius: 24,
     padding: 16,
     marginRight: 14
   },
+  nearbyVisual: {
+    height: 104,
+    borderRadius: 22,
+    backgroundColor: '#16333F',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12,
+    overflow: 'hidden'
+  },
   nearbyAvatar: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    marginBottom: 14
+    width: 68,
+    height: 68,
+    borderRadius: 34
   },
   nearbyAvatarFallback: {
     justifyContent: 'center',
@@ -1293,16 +1452,42 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '800'
   },
-  nearbyDistance: {
+  nearbyLiveText: {
     color: '#FF7B54',
-    fontWeight: '700',
-    marginTop: 4,
-    marginBottom: 8
+    fontSize: 12,
+    fontWeight: '900',
+    marginTop: 3,
+    textTransform: 'uppercase'
   },
-  nearbyBio: {
-    color: '#5D6870',
-    fontSize: 13,
-    lineHeight: 19
+  nearbyStatusDot: {
+    position: 'absolute',
+    top: 16,
+    right: 18,
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#17D6C5',
+    borderWidth: 2,
+    borderColor: '#FFF6ED'
+  },
+  nearbyStatusDotMuted: {
+    backgroundColor: '#8DA4AA'
+  },
+  nearbyDistanceBubble: {
+    position: 'absolute',
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#A9FFF5',
+    borderRadius: 999,
+    paddingHorizontal: 8,
+    paddingVertical: 5
+  },
+  nearbyDistanceBubbleText: {
+    color: '#0B2C34',
+    fontSize: 11,
+    fontWeight: '900',
+    marginLeft: 3
   },
   matchTagRow: {
     flexDirection: 'row',
@@ -1396,6 +1581,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginTop: 4
   },
+  activityVisualMetaRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    marginTop: 6
+  },
+  activityVisualPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#EAFBFA',
+    borderRadius: 999,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    marginRight: 8,
+    marginBottom: 6
+  },
+  activityVisualPillText: {
+    color: '#0D5255',
+    fontSize: 12,
+    fontWeight: '800',
+    marginLeft: 4
+  },
   interestMatchRow: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -1453,7 +1659,28 @@ const styles = StyleSheet.create({
     fontWeight: '800'
   },
   participationRow: {
-    marginTop: 12
+    marginTop: 12,
+    flexDirection: 'row',
+    alignItems: 'center'
+  },
+  participantStack: {
+    flexDirection: 'row',
+    marginRight: 10
+  },
+  participantDot: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: '#173847',
+    borderWidth: 2,
+    borderColor: '#FFFDF9',
+    justifyContent: 'center',
+    alignItems: 'center'
+  },
+  participantDotText: {
+    color: '#A9FFF5',
+    fontSize: 11,
+    fontWeight: '900'
   },
   participationText: {
     color: '#0D5255',

@@ -46,10 +46,10 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
   };
 
   const handleSaveProfile = async () => {
-    if (!bio.trim() || !photoUrl.trim() || favoriteActivities.length === 0) {
+    if (favoriteActivities.length === 0) {
       Alert.alert(
         'Complete your profile',
-        'Add a short bio, a photo URL, and at least one favorite activity.'
+        'Pick at least one favorite activity so nearby people can match with you.'
       );
       return;
     }
@@ -76,18 +76,7 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
       Alert.alert('Profile saved', 'Your profile is ready. Let’s find your people.');
     } catch (error) {
       console.error('Profile save error', error);
-      const targetUid = user?.uid || 'missing-user-uid';
-      const authUid = auth.currentUser?.uid || 'missing-auth-current-user';
-
-      Alert.alert(
-        'Profile save failed',
-        [
-          error.code || 'unknown-error',
-          error.message || 'Please try again.',
-          `Path: users/${targetUid}`,
-          `Auth UID: ${authUid}`
-        ].join('\n')
-      );
+      Alert.alert('Profile save failed', error.message || 'Please try again.');
     } finally {
       setLoading(false);
     }
@@ -112,9 +101,9 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
         style={styles.flex}
       >
         <ScrollView contentContainerStyle={styles.container}>
-          <Text style={styles.title}>Build Your RuFree Profile</Text>
+          <Text style={styles.title}>Pick Your Vibe</Text>
           <Text style={styles.subtitle}>
-            Add a photo, tell people who you are, and choose activities you would actually say yes to.
+            Choose what you would say yes to. You can add a photo and bio later.
           </Text>
 
         <View style={styles.previewCard}>
@@ -133,7 +122,7 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
           </View>
         </View>
 
-        <Text style={styles.sectionLabel}>Profile Photo URL</Text>
+        <Text style={styles.sectionLabel}>Profile Photo URL (optional)</Text>
         <TextInput
           testID="photo-url-input"
           style={styles.input}
@@ -144,7 +133,7 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
           placeholderTextColor="#999"
         />
 
-        <Text style={styles.sectionLabel}>Your Bio</Text>
+        <Text style={styles.sectionLabel}>Your Bio (optional)</Text>
         <TextInput
           testID="bio-input"
           style={[styles.input, styles.bioInput]}
@@ -183,7 +172,7 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
           disabled={loading}
         >
           <Text style={styles.saveButtonText}>
-            {loading ? 'Saving...' : 'Save Profile'}
+            {loading ? 'Saving...' : 'Enter RuFree'}
           </Text>
         </TouchableOpacity>
 

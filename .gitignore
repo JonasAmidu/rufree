@@ -1,5 +1,6 @@
 .expo/
 frontend/.expo/
 frontend/node_modules/
+frontend/dist-web/
 backend/node_modules/
 *.log
