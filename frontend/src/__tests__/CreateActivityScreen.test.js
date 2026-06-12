@@ -37,8 +37,8 @@ describe('CreateActivityScreen', () => {
       },
       {
         currentLocation: { latitude: 51.5007, longitude: -0.1246 },
-        creatorProfile: { displayName: 'Jonas' },
-        user: { uid: 'user-1', email: 'jonas@example.com' }
+        creatorProfile: { displayName: 'Test User' },
+        user: { uid: 'user-1', email: 'user@example.com' }
       }
     );
 
@@ -46,7 +46,7 @@ describe('CreateActivityScreen', () => {
     expect(payload).toMatchObject({
       activity: 'Coffee Chats',
       creatorId: 'user-1',
-      creatorName: 'Jonas',
+      creatorName: 'Test User',
       createdAt: 'server-timestamp',
       isUrgent: true,
       startTime: new Date('2026-05-08T18:30:00.000Z'),
@@ -64,8 +64,8 @@ describe('CreateActivityScreen', () => {
     const onSubmit = jest.fn().mockResolvedValue();
     const { getByTestId } = render(
       <CreateActivityScreen
-        user={{ uid: 'user-1', email: 'jonas@example.com' }}
-        creatorProfile={{ displayName: 'Jonas' }}
+        user={{ uid: 'user-1', email: 'user@example.com' }}
+        creatorProfile={{ displayName: 'Test User' }}
         currentLocation={{ latitude: 51.5, longitude: -0.12 }}
         onSubmit={onSubmit}
       />

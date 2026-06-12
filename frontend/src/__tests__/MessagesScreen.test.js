@@ -37,7 +37,7 @@ describe('MessagesScreen', () => {
           id: 'post-hosted',
           activity: 'Coffee Chats',
           creatorId: 'user-1',
-          creatorName: 'Jonas',
+          creatorName: 'Host User',
           interestedUsers: ['user-2'],
           isUrgent: true
         },
@@ -78,7 +78,7 @@ describe('MessagesScreen', () => {
           id: 'conversation-1',
           activity: 'Coffee Chats',
           participantNames: {
-            'user-1': 'Jonas',
+            'user-1': 'Host User',
             'user-2': 'Maya'
           },
           lastMessage: 'See you at 6.',

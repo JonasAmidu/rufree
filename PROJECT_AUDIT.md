@@ -1,6 +1,6 @@
 # RuFree Project Audit
 
-Generated: 2026-06-12 02:03 Europe/London
+Generated: 2026-06-12 10:15 Europe/London
 
 ## Executive Summary
 
@@ -10,7 +10,7 @@ Initial validation showed the app could build and pass tests, but it was not rel
 
 After the first AIDOps operational hardening cycle:
 
-- Frontend tests pass: 16 suites / 43 tests.
+- Frontend tests pass: 17 suites / 49 tests.
 - Frontend audit passes: 0 vulnerabilities.
 - Backend audit passes: 0 vulnerabilities.
 - Expo doctor passes: 18/18 checks.
@@ -21,9 +21,10 @@ After the first AIDOps operational hardening cycle:
 - Report/block actions are reachable from profile/activity surfaces.
 - Settings is reachable from the tab bar and password reset is wired.
 - Activity-linked message previews are derived from real joined/hosted activities.
+- Persisted plan conversations and messages are implemented locally with Firestore helpers and UI.
 - A dry-run/apply backend helper exists for legacy public profile cleanup.
 
-Current completion estimate: 90%.
+Current completion estimate: 91%.
 
 ## Architecture
 
@@ -61,7 +62,7 @@ Implemented:
 Issues:
 
 - Several strings render as mojibake in source for apostrophes and emoji-like labels. This is cosmetic but should be cleaned before store submission.
-- Messages screen is not backed by real conversations.
+- Messages screen is backed by persisted plan conversations locally; live validation now passes against `rufree-c16ed` after deploying the tracked conversation/message rules and index.
 - Settings legal policy copy still requires approval.
 - No end-to-end route walkthrough exists with a live Firebase user in this exercise.
 
@@ -71,6 +72,7 @@ Implemented:
 
 - Firebase Auth client integration.
 - Firestore rules for users, posts, reports, and blocks.
+- Firestore rules for conversations and nested messages are tracked locally.
 - Firestore index for posts by `createdAt desc`.
 
 Changed in this cycle:
@@ -84,7 +86,7 @@ Open risks:
 
 - Existing production/test Firestore documents may already contain `email` and exact coordinates. A migration or cleanup plan is required before production launch.
 - A cleanup helper exists, but running it requires Firebase Admin credentials and approval.
-- No backend functions currently enforce nearby discovery, moderation workflows, notification fanout, or messaging.
+- No backend functions currently enforce nearby discovery, moderation workflows, or notification fanout.
 - Post reaction counters can still drift under concurrent toggles because client code increments counters while rules validate final array size. This is acceptable for prototype but should move to transaction/function logic.
 
 ## APIs
@@ -181,7 +183,7 @@ Covered:
 Missing:
 
 - Firestore rules emulator tests.
-- Full Auth + Firestore RC1 smoke test with controlled test user.
+- Full Auth + Firestore RC1 smoke test completion against the target Firebase project.
 - E2E route validation.
 - Report/block workflow tests.
 - Offline/error-state tests for core Firestore reads.
@@ -195,7 +197,7 @@ Critical:
 
 High:
 
-- Real activity-linked messaging persistence missing.
+- Live conversation/message validation passed after target Firestore rules/index deployment.
 - Discovery is bounded but not true geospatial/backend-filtered.
 - No crash reporting/analytics.
 

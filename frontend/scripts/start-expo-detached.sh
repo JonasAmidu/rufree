@@ -2,8 +2,10 @@
 set -eu
 
 HOST_IP="${1:-}"
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+FRONTEND_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
-cd /home/jonas/.openclaw/workspace/rufree/frontend
+cd "$FRONTEND_DIR"
 pkill -f "expo start" 2>/dev/null || true
 rm -f /tmp/rufree-live.log
 

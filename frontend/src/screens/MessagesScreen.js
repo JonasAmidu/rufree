@@ -82,6 +82,7 @@ export const buildThreadsFromActivities = (activities = [], user = null) =>
 
       return {
         id: activity.id,
+        source: 'activity',
         name: isHost ? `${participantCount} plan participant${participantCount === 1 ? '' : 's'}` : activity.creatorName || 'RuFree user',
         activity: activity.activity || 'Nearby activity',
         availableNow: Boolean(activity.availableNow || activity.isUrgent),
@@ -105,6 +106,8 @@ export const buildThreadsFromConversations = (conversations = [], user = null) =
 
     return {
       id: conversation.id,
+      conversationId: conversation.id,
+      source: 'conversation',
       name: otherNames.join(', ') || conversation.activity || 'RuFree plan',
       activity: conversation.activity || 'Nearby activity',
       availableNow: true,

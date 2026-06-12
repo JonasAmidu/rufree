@@ -7,7 +7,6 @@ RuFree is a React Native/Expo app for finding nearby people and activity-led pla
 - Frontend app lives in `frontend/`.
 - Firebase config, Firestore rules, and indexes live at the repo root.
 - Backend dependency hygiene lives in `backend/`; `backend/functions/` is currently empty.
-- GitHub repo: `https://github.com/JonasAmidu/rufree`
 
 ## Features
 
@@ -59,7 +58,7 @@ rufree/
 ## Frontend Setup
 
 ```powershell
-cd C:\Users\alish\workspace\rufree\frontend
+cd frontend
 npm install
 npm run start
 ```
@@ -76,16 +75,12 @@ npm run test:ci
 npm run doctor
 ```
 
-For phone testing with Expo Go, use the Expo QR code or the LAN URL shown by Metro. The last known LAN URL on this machine was:
-
-```text
-exp://192.168.0.88:8083
-```
+For phone testing with Expo Go, use the Expo QR code or the LAN URL shown by Metro.
 
 ## Backend Setup
 
 ```powershell
-cd C:\Users\alish\workspace\rufree\backend
+cd backend
 npm install
 npm audit --audit-level=moderate
 npm run audit:public-profiles
@@ -143,7 +138,7 @@ Before launch, audit existing Firestore user documents for legacy email/exact-lo
 Latest verification run:
 
 ```powershell
-cd C:\Users\alish\workspace\rufree\frontend
+cd frontend
 npm run test:ci
 npm audit --audit-level=moderate
 npx expo-doctor
@@ -151,13 +146,13 @@ npx expo export --platform web --output-dir dist-web
 ```
 
 ```powershell
-cd C:\Users\alish\workspace\rufree\backend
+cd backend
 npm audit --audit-level=moderate
 ```
 
 Expected current results:
 
-- Jest: 16 suites / 43 tests passing.
+- Jest: 17 suites / 49 tests passing.
 - Frontend audit: 0 vulnerabilities.
 - Backend audit: 0 vulnerabilities.
 - Expo Doctor: 18/18 checks passing.

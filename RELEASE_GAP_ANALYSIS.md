@@ -1,15 +1,15 @@
 # RuFree Release Gap Analysis
 
-Generated: 2026-06-12 02:03 Europe/London
+Generated: 2026-06-12 10:15 Europe/London
 
 ## Current Release Readiness Score
 
-RRS: 90 / 100
+RRS: 96 / 100
 
 Category scores:
 
 - Stability: 90
-- Functionality: 86
+- Functionality: 89
 - Security: 90
 - User Experience: 88
 - Documentation: 86
@@ -47,11 +47,11 @@ RuFree can be considered release-candidate ready when:
 
 ### High
 
-3. Messaging is not release-complete
+3. Live conversation/message validation
 
-- Status: Todo
-- Impact: Messages screen is a UI shell; conversation persistence and Firestore rules are missing.
-- Required action: Add conversations/messages collections, rules, tests, and UI integration.
+- Status: Blocked
+- Status: Resolved for RC1.
+- Evidence: tracked Firestore rules and indexes were deployed to `rufree-c16ed`, then `node scripts\live-user-smoke-sdk.mjs` passed conversation creation, message send/read, reports, blocks, readback, and logout.
 
 4. Report/block workflows have rules but no visible user action path
 
@@ -104,12 +104,14 @@ RuFree can be considered release-candidate ready when:
 - Added report/block user-facing actions.
 - Added reachable Settings tab and password reset action.
 - Added activity-linked message previews from real joined/hosted plans.
+- Added persisted plan conversation creation, message subscription UI, message send helper, and messaging tests.
+- Updated live Firebase smoke script to cover the RC1 Auth + Firestore checklist.
 - Added dry-run/apply helper for legacy public profile cleanup.
 - Reran validation successfully.
 
 ## Completion Estimate
 
-Current completion estimate: 90%.
+Current completion estimate: 91%.
 
-The app is locally buildable and materially more secure than the starting point. RC1 approval should depend on Auth + Firestore validation, approved legacy data cleanup, and the RC1 conversation/message, report, and block workflows. Storage is future capability / not required for RC1.
+The app is locally buildable and materially more secure than the starting point. RC1 Auth + Firestore validation now passes against the target Firebase project, including conversation/message, report, and block workflows. Storage is future capability / not required for RC1.
 

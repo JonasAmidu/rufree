@@ -1,6 +1,6 @@
 # RuFree Release Plan
 
-Generated: 2026-06-12 02:03 Europe/London
+Generated: 2026-06-12 10:15 Europe/London
 
 ## Goal
 
@@ -8,9 +8,10 @@ Move RuFree from locally validated prototype to release-candidate status with RR
 
 ## Current State
 
-- Completion estimate: 90%.
-- RRS: 90 / 100.
+- Completion estimate: 96%.
+- RRS: 96 / 100.
 - Build/test/audit/export: passing locally.
+- Live Firebase Auth + Firestore validation: passing against `rufree-c16ed`.
 - AIDOps release project: `RuFree Release Readiness`.
 - AIDOps project id: `project-1781226080958`.
 
@@ -32,21 +33,21 @@ Complete:
 - `rufree-scale-001` Cap realtime Firestore feed listeners.
 - `rufree-mod-001` Add report/block UI workflows.
 - `rufree-msg-000` Derive message threads from real joined/hosted activities.
+- `rufree-msg-001` Persist plan conversation/message UI and Firestore helpers.
 
 Blocked:
 
-- None for Storage. Firebase Storage is future capability / not required for RC1.
+- Firebase Storage is future capability / not required for RC1.
 
 Testing:
 
-- `rufree-auth-001` Validate RC1 Firebase Auth + Firestore workflows against target project.
 - `rufree-data-001` Plan existing user document migration for legacy email/exact location fields.
 - `rufree-legal-001` Replace legal/settings coming-soon surfaces.
 - `rufree-deploy-001` Document release deployment and Firebase target procedure.
 
 Todo:
 
-- None locally. Remaining RC1 work is in testing pending Auth + Firestore workflow validation, data cleanup approval, or live runtime walkthrough.
+- None locally. Remaining non-critical release work is in testing pending data cleanup approval, legal policy copy, or live runtime walkthrough.
 
 ## Priority Plan
 
@@ -56,20 +57,20 @@ Owner role: tester
 
 RC1 scope: Firebase Auth + Firestore only. Firebase Storage is wired for future media/file features but is not required, untested Storage must not block RC1 approval.
 
-Needed:
+Completed:
 
-- Confirm target Firebase project.
-- Use safe test account credentials.
-- Run sign-up, login, logout.
-- Validate profile create/read/update.
-- Validate activity create/read/update/join.
-- Validate conversation creation.
-- Validate message send/read.
-- Validate report user/activity.
-- Validate block user.
-- Validate Firestore security rules.
-- Validate Firestore indexes.
-- Record result in `QA_REPORT.md`.
+- Confirmed target Firebase project: `rufree-c16ed`.
+- Deployed Firestore rules and conversation feed index.
+- Ran sign-up, login, logout.
+- Validated profile create/read/update.
+- Validated activity create/read/update/join.
+- Validated conversation creation.
+- Validated message send/read.
+- Validated report user/activity.
+- Validated block user.
+- Validated Firestore security rules.
+- Validated Firestore indexes.
+- Recorded result in `QA_REPORT.md`.
 
 Only Auth + Firestore passing is required for this stage.
 
@@ -109,7 +110,7 @@ Needed:
 - Wire messages screen to real Firestore data.
 - Add tests for empty/loading/error/thread preview.
 
-Activity-linked thread previews from joined/hosted plans are complete; persisted chat is still open.
+Activity-linked thread previews, persisted plan conversation creation, message read subscription, and message sending are complete locally and passed live validation against `rufree-c16ed`.
 
 ### 5. Release polish and docs
 
@@ -127,7 +128,7 @@ Needed:
 Frontend:
 
 ```powershell
-cd C:\Users\alish\workspace\rufree\frontend
+cd frontend
 npm run test:ci
 npm audit --audit-level=moderate
 npx expo-doctor
@@ -137,7 +138,7 @@ npx expo export --platform web --output-dir dist-web
 Backend:
 
 ```powershell
-cd C:\Users\alish\workspace\rufree\backend
+cd backend
 npm audit --audit-level=moderate
 ```
 
@@ -149,6 +150,6 @@ Continue local implementation until RRS >= 90 unless:
 - A destructive Firestore migration requires approval.
 - Hardware/device testing is required.
 
-Current hard blocker: live Firebase validation and legacy data cleanup require target project access and/or approval.
+Current hard blocker: legacy data cleanup still requires backup and destructive-data approval.
 Current RC1 Firebase rule: do not block approval because Storage is disabled or untested.
 

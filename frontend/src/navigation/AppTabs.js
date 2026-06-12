@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Alert, Modal } from 'react-native';
+import { Alert, Modal, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { sendPasswordResetEmail, signOut } from '@firebase/auth';
@@ -12,6 +12,7 @@ import MessagesScreen, { buildThreadsFromActivities, buildThreadsFromConversatio
 import ProfileScreen from '../screens/ProfileScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import { calculateDistanceKm } from '../utils/activityFeed';
+import { buildMessagesQuery, sendConversationMessage } from '../utils/messaging';
 
 const Tab = createBottomTabNavigator();
 const PROFILE_RADIUS_KM = 10;
@@ -29,6 +30,10 @@ const AppTabs = ({ user, userProfile }) => {
   const [allUsers, setAllUsers] = useState([]);
   const [conversations, setConversations] = useState([]);
   const [showEditProfileModal, setShowEditProfileModal] = useState(false);
+  const [activeThread, setActiveThread] = useState(null);
+  const [activeMessages, setActiveMessages] = useState([]);
+  const [messageDraft, setMessageDraft] = useState('');
+  const [sendingMessage, setSendingMessage] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   useEffect(() => {
@@ -89,6 +94,29 @@ const AppTabs = ({ user, userProfile }) => {
     };
   }, [user.uid]);
 
+  useEffect(() => {
+    if (!activeThread?.conversationId) {
+      setActiveMessages([]);
+      return undefined;
+    }
+
+    return onSnapshot(
+      buildMessagesQuery(db, activeThread.conversationId),
+      (snapshot) => {
+        setActiveMessages(
+          snapshot.docs.map((item) => ({
+            id: item.id,
+            ...item.data()
+          }))
+        );
+      },
+      (error) => {
+        console.error('Message subscription error', error);
+        Alert.alert('Messages unavailable', 'We could not load this conversation right now.');
+      }
+    );
+  }, [activeThread?.conversationId]);
+
   const nearbyCount = useMemo(() => {
     if (!userProfile?.location) {
       return 0;
@@ -141,6 +169,41 @@ const AppTabs = ({ user, userProfile }) => {
 
   const showPolicyNotice = (title) => {
     Alert.alert(title, 'Release policy copy is tracked in the RuFree release board and must be approved before public launch.');
+  };
+
+  const handleOpenThread = (thread) => {
+    if (!thread?.conversationId) {
+      Alert.alert(
+        thread?.name || 'Conversation',
+        'Join a live activity to create the plan chat, then messages will appear here.'
+      );
+      return;
+    }
+
+    setActiveThread(thread);
+    setMessageDraft('');
+  };
+
+  const handleSendMessage = async () => {
+    if (!activeThread?.conversationId) {
+      return;
+    }
+
+    setSendingMessage(true);
+
+    try {
+      await sendConversationMessage(db, activeThread.conversationId, {
+        text: messageDraft,
+        user,
+        userProfile
+      });
+      setMessageDraft('');
+    } catch (error) {
+      console.error('Send message error', error);
+      Alert.alert('Message failed', error.message || 'Please try again.');
+    } finally {
+      setSendingMessage(false);
+    }
   };
 
   return (
@@ -196,12 +259,7 @@ const AppTabs = ({ user, userProfile }) => {
           {({ navigation }) => (
             <MessagesScreen
               onFindPeople={() => navigation.navigate('Home')}
-              onOpenThread={(thread) =>
-                Alert.alert(
-                  thread?.name || 'Conversation',
-                  thread?.lastMessage || 'This conversation is linked to one of your live plans.'
-                )
-              }
+              onOpenThread={handleOpenThread}
               threads={messageThreads}
             />
           )}
@@ -242,8 +300,207 @@ const AppTabs = ({ user, userProfile }) => {
           user={user}
         />
       </Modal>
+
+      <Modal animationType="slide" visible={Boolean(activeThread)}>
+        <View style={styles.threadScreen}>
+          <View style={styles.threadHeader}>
+            <TouchableOpacity
+              accessibilityRole="button"
+              onPress={() => setActiveThread(null)}
+              style={styles.closeButton}
+            >
+              <Ionicons color="#0B2C34" name="chevron-back" size={24} />
+            </TouchableOpacity>
+            <View style={styles.threadTitleWrap}>
+              <Text numberOfLines={1} style={styles.threadTitle}>
+                {activeThread?.name || 'Conversation'}
+              </Text>
+              <Text numberOfLines={1} style={styles.threadSubtitle}>
+                {activeThread?.activity || 'RuFree plan'}
+              </Text>
+            </View>
+          </View>
+
+          <ScrollView contentContainerStyle={styles.messageList}>
+            {activeMessages.length ? (
+              activeMessages.map((message) => {
+                const mine = message.senderId === user.uid;
+
+                return (
+                  <View
+                    key={message.id}
+                    style={[styles.messageBubble, mine && styles.messageBubbleMine]}
+                  >
+                    <Text style={[styles.messageSender, mine && styles.messageSenderMine]}>
+                      {mine ? 'You' : message.senderName || 'RuFree user'}
+                    </Text>
+                    <Text style={[styles.messageText, mine && styles.messageTextMine]}>
+                      {message.text}
+                    </Text>
+                  </View>
+                );
+              })
+            ) : (
+              <View style={styles.emptyThread}>
+                <Text style={styles.emptyThreadTitle}>No messages yet</Text>
+                <Text style={styles.emptyThreadBody}>
+                  Send the first note to confirm where and when to meet.
+                </Text>
+              </View>
+            )}
+          </ScrollView>
+
+          <View style={styles.composer}>
+            <TextInput
+              multiline
+              onChangeText={setMessageDraft}
+              placeholder="Message this plan"
+              placeholderTextColor="#6F838C"
+              style={styles.messageInput}
+              value={messageDraft}
+            />
+            <TouchableOpacity
+              accessibilityRole="button"
+              disabled={sendingMessage || !messageDraft.trim()}
+              onPress={handleSendMessage}
+              style={[
+                styles.sendButton,
+                (sendingMessage || !messageDraft.trim()) && styles.sendButtonDisabled
+              ]}
+            >
+              <Ionicons color="#FFFFFF" name="send" size={20} />
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </>
   );
 };
+
+const styles = StyleSheet.create({
+  threadScreen: {
+    backgroundColor: '#F5FBFC',
+    flex: 1
+  },
+  threadHeader: {
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    borderBottomColor: '#DCE8ED',
+    borderBottomWidth: 1,
+    flexDirection: 'row',
+    gap: 12,
+    paddingHorizontal: 16,
+    paddingBottom: 14,
+    paddingTop: 52
+  },
+  closeButton: {
+    alignItems: 'center',
+    backgroundColor: '#EAF7F5',
+    borderRadius: 20,
+    height: 40,
+    justifyContent: 'center',
+    width: 40
+  },
+  threadTitleWrap: {
+    flex: 1
+  },
+  threadTitle: {
+    color: '#103141',
+    fontSize: 20,
+    fontWeight: '900'
+  },
+  threadSubtitle: {
+    color: '#5F747D',
+    fontSize: 13,
+    fontWeight: '700',
+    marginTop: 2
+  },
+  messageList: {
+    flexGrow: 1,
+    gap: 10,
+    justifyContent: 'flex-end',
+    padding: 16
+  },
+  messageBubble: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#FFFFFF',
+    borderColor: '#DCE8ED',
+    borderRadius: 18,
+    borderWidth: 1,
+    maxWidth: '86%',
+    paddingHorizontal: 14,
+    paddingVertical: 10
+  },
+  messageBubbleMine: {
+    alignSelf: 'flex-end',
+    backgroundColor: '#0CA999',
+    borderColor: '#0CA999'
+  },
+  messageSender: {
+    color: '#607681',
+    fontSize: 12,
+    fontWeight: '800',
+    marginBottom: 4
+  },
+  messageSenderMine: {
+    color: '#DDFCF7'
+  },
+  messageText: {
+    color: '#14364B',
+    fontSize: 15,
+    lineHeight: 21
+  },
+  messageTextMine: {
+    color: '#FFFFFF'
+  },
+  emptyThread: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    padding: 24
+  },
+  emptyThreadTitle: {
+    color: '#123247',
+    fontSize: 20,
+    fontWeight: '900',
+    marginBottom: 8
+  },
+  emptyThreadBody: {
+    color: '#5A707B',
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center'
+  },
+  composer: {
+    alignItems: 'flex-end',
+    backgroundColor: '#FFFFFF',
+    borderTopColor: '#DCE8ED',
+    borderTopWidth: 1,
+    flexDirection: 'row',
+    gap: 10,
+    padding: 14
+  },
+  messageInput: {
+    backgroundColor: '#EFF7F8',
+    borderRadius: 18,
+    color: '#103141',
+    flex: 1,
+    fontSize: 15,
+    maxHeight: 110,
+    minHeight: 46,
+    paddingHorizontal: 14,
+    paddingVertical: 12
+  },
+  sendButton: {
+    alignItems: 'center',
+    backgroundColor: '#0CA999',
+    borderRadius: 22,
+    height: 44,
+    justifyContent: 'center',
+    width: 44
+  },
+  sendButtonDisabled: {
+    backgroundColor: '#9DB2BA'
+  }
+});
 
 export default AppTabs;

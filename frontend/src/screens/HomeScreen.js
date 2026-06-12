@@ -34,6 +34,7 @@ import {
 } from '../utils/activityFeed';
 import { toPublicLocation } from '../utils/privacy';
 import { blockUser, reportTarget } from '../utils/safetyActions';
+import { ensureActivityConversation } from '../utils/messaging';
 
 const RADIUS_OPTIONS = [2, 5, 10, 25];
 const mapVisual = require('../../assets/nearby-map-visual.png');
@@ -493,7 +494,8 @@ const HomeScreen = ({ user, userProfile }) => {
     }
   };
 
-  const handleJoin = async (activityId) => {
+  const handleJoin = async (activity) => {
+    const activityId = activity.id;
     const alreadyJoined = userJoinedActivities.has(activityId);
 
     try {
@@ -506,6 +508,11 @@ const HomeScreen = ({ user, userProfile }) => {
         });
       } else {
         await joinActivity(db, activityId, user.uid);
+        await ensureActivityConversation(db, {
+          activity,
+          user,
+          userProfile
+        });
         setUserJoinedActivities((current) => {
           const next = new Set(current);
           next.add(activityId);
@@ -678,7 +685,7 @@ const HomeScreen = ({ user, userProfile }) => {
         <View style={styles.activityActionRow}>
           <TouchableOpacity
             style={[styles.joinButton, isJoined && styles.joinButtonActive]}
-            onPress={() => handleJoin(activity.id)}
+            onPress={() => handleJoin(activity)}
           >
             <Text style={[styles.joinButtonText, isJoined && styles.joinButtonTextActive]}>
               {isJoined ? 'Joined' : 'Join now'}

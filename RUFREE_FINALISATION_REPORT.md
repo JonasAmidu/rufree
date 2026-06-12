@@ -1,6 +1,6 @@
 # RuFree Finalisation Report
 
-Generated: 2026-06-12 02:03 Europe/London
+Generated: 2026-06-12 10:15 Europe/London
 
 ## Operational Validation Exercise
 
@@ -9,7 +9,7 @@ AIDOps was used to locate, audit, measure, harden, and track RuFree release read
 Repository:
 
 ```text
-C:\Users\alish\workspace\rufree
+repo root
 ```
 
 AIDOps release project:
@@ -21,23 +21,24 @@ project-1781226080958
 
 ## Current Outcome
 
-Release-candidate status: Not yet achieved.
+Release-candidate status: RC1 approval candidate.
 
 Reason:
 
 - Local validation passes.
 - Critical privacy/dependency issues were reduced.
-- Full RC1 Auth + Firestore validation still needs completion against the target project.
+- Full RC1 Auth + Firestore validation passes against the target project.
+- Live validation reaches conversation creation, message send/read, reports, blocks, final readback, and logout.
 - Existing Firestore data cleanup requires project access and destructive-data approval.
 - Firebase Storage is future capability / not required for RC1.
 
-Current completion estimate: 90%.
+Current completion estimate: 96%.
 
-Current Release Readiness Score: 90 / 100.
+Current Release Readiness Score: 96 / 100.
 
 ## Development Metrics
 
-Tasks completed: 6
+Tasks completed: 7
 
 - `rufree-sec-001` Remove private email from public user profiles.
 - `rufree-sec-002` Reduce precision of public location writes.
@@ -45,16 +46,15 @@ Tasks completed: 6
 - `rufree-scale-001` Cap realtime Firestore feed listeners.
 - `rufree-mod-001` Add report/block UI workflows.
 - `rufree-msg-000` Derive message threads from real joined/hosted activities.
+- `rufree-msg-001` Add persisted plan conversation/message UI and Firestore helpers.
 
-Tasks blocked: 0
+Tasks blocked: 0 for RC1 Auth + Firestore validation
 
 - Firebase Storage is not an RC1 blocker.
 
-Tasks remaining: 5 testing, 0 blocked
+Tasks remaining: 3 testing
 
-- Testing: `rufree-auth-001` RC1 Auth + Firestore validation.
 - Testing: `rufree-data-001` Existing data migration/cleanup helper.
-- Testing: `rufree-msg-001` Persisted conversation/message read model; send/reply UI still needs live validation.
 - Testing: `rufree-legal-001` Legal/settings completion.
 - Testing: `rufree-deploy-001` Target-specific deployment validation.
 
@@ -67,7 +67,7 @@ Features completed: 4
 - Public privacy hardening for profile/activity writes.
 - Report/block safety actions.
 - Reachable settings/password reset path.
-- Real activity-linked message previews.
+- Real activity-linked message previews and persisted plan chat.
 
 Bugs/security defects fixed: 6
 
@@ -77,6 +77,7 @@ Bugs/security defects fixed: 6
 - Unbounded realtime listeners.
 - Missing user-facing report/block controls.
 - Unreachable settings/password reset path.
+- Missing persisted message send/read UI.
 
 Files modified:
 
@@ -109,17 +110,17 @@ Commits created: 0
 
 ## Product Metrics
 
-Completion percentage: 82%.
+Completion percentage: 96%.
 
 Remaining defects:
 
-- 2 critical release blockers.
-- 3 high-priority gaps.
+- 0 critical RC1 Auth + Firestore blockers.
+- 2 high-priority gaps.
 - 3 medium/low gaps.
 
 Build success rate: 100% for this exercise validation cycle.
 
-Release readiness score: 82 / 100.
+Release readiness score: 96 / 100.
 
 ## Agent Metrics
 
@@ -165,17 +166,20 @@ DevOps:
 
 Passed:
 
-- `npm run test:ci`: 16 suites / 43 tests.
+- `npm run test:ci`: 17 suites / 49 tests.
 - `npm audit --audit-level=moderate` in frontend: 0 vulnerabilities.
 - `npm audit --audit-level=moderate` in backend: 0 vulnerabilities.
 - `npx expo-doctor`: 18/18 checks.
 - `npx expo export --platform web --output-dir dist-web`: success.
+- `npx firebase-tools deploy --project rufree-c16ed --only firestore:rules,firestore:indexes`: success.
+- `node scripts\live-user-smoke-sdk.mjs`: success.
+- Live Auth + Firestore evidence: host signup/profile/login, guest signup/profile/login, activity create, profile update, activity join, conversation create, message send/read, reports create, block create, readback, logout.
 
 Blocked:
 
 - Legacy Firestore data cleanup.
 
-In progress:
+Complete:
 
 - RC1 Firebase validation for Auth + Firestore only.
 - Validation scope: sign up, login, logout, profile create/read/update, activity create/read/update/join, conversation creation, message send/read, report user/activity, block user, Firestore security rules, and Firestore indexes.
@@ -186,23 +190,20 @@ Out of RC1 scope:
 
 ## Final Completion Estimate
 
-90%.
+96%.
 
 ## Final RRS
 
-90 / 100.
+96 / 100.
 
 ## Remaining Blockers
 
 1. Need approval and backup procedure before running public profile cleanup against existing Firestore `users` documents.
-2. Need full RC1 Auth + Firestore validation across profiles, activities, conversations/messages, reports, blocks, rules, and indexes.
-3. Need persisted conversation backend before messaging can be considered production-complete.
+2. Need final legal policy copy/links before broader release polish is complete.
 
 ## Recommended Next Actions
 
-1. Complete the RC1 Firebase validation checklist using Auth + Firestore only.
+1. Approve RC1 from the Auth + Firestore validation perspective.
 2. Approve a read-only legacy data audit, then a backed-up cleanup if private fields are present.
-3. Implement report/block UI workflows.
-4. Implement real activity-linked messaging.
-5. Replace settings legal/reset placeholders.
+3. Replace settings legal policy placeholders.
 

@@ -1,12 +1,12 @@
 # RuFree QA Report
 
-Generated: 2026-06-12 02:03 Europe/London
+Generated: 2026-06-12 10:15 Europe/London
 
 ## Summary
 
-Local QA status: PASS with RC1 Firebase validation in progress.
+Local QA status: PASS with RC1 Firebase Auth + Firestore validation complete.
 
-RuFree passes local automated validation after the first AIDOps hardening cycle. RC1 Firebase validation depends on Auth + Firestore only. Firebase Storage is wired for future use but is not required for this stage and must not block RC1 approval.
+RuFree passes local automated validation after the RC1 messaging update. The live RC1 Firebase validation now passes against `rufree-c16ed` after deploying the tracked Firestore rules and conversation feed index. Firebase Storage is wired for future use but is not required for this stage and must not block RC1 approval.
 
 ## Validation Results
 
@@ -28,7 +28,7 @@ Evidence:
 
 ### Runtime Validation
 
-Status: PARTIAL
+Status: PARTIAL / LIVE FIREBASE PASS
 
 Evidence:
 
@@ -38,7 +38,7 @@ Evidence:
 
 Not completed:
 
-- Live Expo runtime walkthrough on device/browser with real Firebase credentials.
+- Live Expo runtime walkthrough on device/browser with a real user session.
 
 ### Dependency Audit
 
@@ -60,7 +60,7 @@ Result: PASS, 0 vulnerabilities.
 
 ### Route Validation
 
-Status: PARTIAL
+Status: PASS FOR RC1 FIREBASE SCOPE
 
 Covered by tests:
 
@@ -85,25 +85,32 @@ Validated locally by code/tests:
 - Activity enrichment/filtering.
 - Firestore query construction with bounded limits.
 - Privacy utility coordinate rounding.
+- Persisted plan conversation helpers and message send/read UI path.
 
 Not completed:
 
 - Firestore rules emulator tests.
-- Full RC1 live Firebase rules validation against target project.
+
+Live target validation:
+
+- Project: `rufree-c16ed`.
+- Deploy: `npx firebase-tools deploy --project rufree-c16ed --only firestore:rules,firestore:indexes`.
+- Script: `node scripts\live-user-smoke-sdk.mjs`.
+- Result: PASS.
 
 RC1 live Firebase checklist:
 
-- User sign up.
-- User login.
-- User logout.
-- Profile create/read/update.
-- Activity create/read/update/join.
-- Conversation creation.
-- Message send/read.
-- Report user/activity.
-- Block user.
-- Firestore security rules.
-- Firestore indexes.
+- User sign up: PASS.
+- User login: PASS.
+- User logout: PASS.
+- Profile create/read/update: PASS.
+- Activity create/read/update/join: PASS.
+- Conversation creation: PASS.
+- Message send/read: PASS.
+- Report user/activity: PASS.
+- Block user: PASS.
+- Firestore security rules: PASS.
+- Firestore indexes: PASS.
 
 Out of RC1 scope:
 
@@ -127,16 +134,16 @@ Gaps:
 
 ### Authentication Validation
 
-Status: PARTIAL / TESTING
+Status: PASS
 
 Covered:
 
 - Unit tests for sign-up, sign-in, missing fields, and Firebase configuration error messaging.
-- Live Auth sign-up and Firestore profile write/read smoke path has passed against the target project.
+- Live Auth sign-up and Firestore profile write/read smoke path passed against the target project.
+- Live activity create, profile update, activity join, conversation creation, message send/read, reports, blocks, readback, and logout passed against the target project.
 
 Remaining:
 
-- Full RC1 Auth + Firestore workflow validation still needs logout, profile update, activity update/join, conversations/messages, reports, blocks, rules, and indexes.
 - Legacy public profile cleanup requires Firebase Admin credentials plus backup/approval before apply mode.
 
 ### Error Handling Validation
@@ -158,25 +165,27 @@ Gaps:
 ## Commands Run
 
 ```powershell
-cd C:\Users\alish\workspace\rufree\frontend
+cd frontend
 npm run test:ci
 npm audit --audit-level=moderate
 npx expo-doctor
 npx expo export --platform web --output-dir dist-web
+node scripts\live-user-smoke-sdk.mjs
 ```
 
 ```powershell
-cd C:\Users\alish\workspace\rufree\backend
+cd backend
 npm audit --audit-level=moderate
 ```
 
 ## Results
 
-- Jest: 16 suites passed, 43 tests passed.
+- Jest: 17 suites passed, 49 tests passed.
 - Frontend audit: 0 vulnerabilities.
 - Backend audit: 0 vulnerabilities.
 - Expo doctor: 18/18 checks passed.
 - Web export: passed.
+- Live Firebase RC1 script: passed.
 
 ## Defects Found
 
@@ -186,12 +195,11 @@ Resolved:
 - Public user docs storing email: fixed for new writes and blocked by rules on create.
 - Public exact coordinates: mitigated for new writes by coordinate rounding.
 - Unbounded realtime post/user reads: bounded.
+- Persisted conversation/message UI and Firestore helpers: fixed locally.
 
 Remaining:
 
-- Full RC1 Auth + Firestore validation is still in progress.
 - Legacy Firestore data cleanup not performed.
-- Real messaging persistence missing.
 - Report/block UI workflows are implemented, but moderation review operations are not.
 - Password reset is wired; legal policy copy remains incomplete.
 - Firestore rules emulator tests missing.
@@ -199,7 +207,7 @@ Remaining:
 
 ## QA Verdict
 
-RuFree is locally stable. RC1 readiness should be judged on Auth + Firestore validation only; Storage is future capability / not required for RC1.
+RuFree is locally stable and now has a live-validated persisted messaging path. RC1 readiness should be judged on Auth + Firestore validation only; Storage is future capability / not required for RC1.
 
-Recommended current RRS: 90 / 100.
+Recommended current RRS: 96 / 100. RC1 Auth + Firestore validation is achieved. Remaining non-RC1-critical items are legacy data cleanup approval, legal policy copy, and optional emulator/runtime walkthrough depth.
 

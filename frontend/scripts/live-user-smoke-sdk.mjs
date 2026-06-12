@@ -1,15 +1,24 @@
 import { initializeApp } from 'firebase/app';
-import { createUserWithEmailAndPassword, getAuth, signInWithEmailAndPassword } from 'firebase/auth';
+import {
+  createUserWithEmailAndPassword,
+  getAuth,
+  signInWithEmailAndPassword,
+  signOut
+} from 'firebase/auth';
 import {
   addDoc,
+  arrayUnion,
   collection,
   doc,
+  getDoc,
   getDocs,
   getFirestore,
+  increment,
   orderBy,
   query,
   serverTimestamp,
-  setDoc
+  setDoc,
+  updateDoc
 } from 'firebase/firestore';
 
 const firebaseConfig = {
@@ -22,160 +31,156 @@ const firebaseConfig = {
   measurementId: 'G-82PQZE0FHG'
 };
 
-const distanceKm = (a, b) => {
-  if (!a || !b) return null;
-  const r = 6371;
-  const dLat = ((b.latitude - a.latitude) * Math.PI) / 180;
-  const dLon = ((b.longitude - a.longitude) * Math.PI) / 180;
-  const lat1 = (a.latitude * Math.PI) / 180;
-  const lat2 = (b.latitude * Math.PI) / 180;
-  const value =
-    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-  return r * (2 * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value)));
+const log = (stage, extra = {}) => {
+  console.log(JSON.stringify({ stage, ...extra }, null, 2));
 };
 
-const ensureSeedActivities = async (db) => {
-  const snapshot = await getDocs(query(collection(db, 'posts'), orderBy('createdAt', 'desc')));
+const buildProfile = (uid, displayName) => ({
+  uid,
+  displayName,
+  bio: 'RC1 validation profile for Auth and Firestore flows.',
+  photoUrl: '',
+  favoriteActivities: ['Coffee Chats', 'Tennis'],
+  location: { latitude: 51.51, longitude: -0.13 },
+  createdAt: serverTimestamp(),
+  updatedAt: serverTimestamp()
+});
 
-  if (!snapshot.empty) {
-    return snapshot.docs.map((item) => ({ id: item.id, ...item.data() }));
-  }
+const createSmokeUser = async (auth, db, label) => {
+  const email = `rc1.${label}.${Date.now()}@example.com`;
+  const password = 'TestPass123!';
+  const credential = await createUserWithEmailAndPassword(auth, email, password);
+  const displayName = `RC1 ${label}`;
 
-  const baseLocation = { latitude: 51.5074, longitude: -0.1278 };
-  const seedActivities = [
-    {
-      activity: 'Coffee Hangout',
-      location: { name: 'Soho Coffee House', latitude: 51.5136, longitude: -0.1365 },
-      startTime: new Date(Date.now() + 1000 * 60 * 45),
-      isUrgent: true,
-      creatorId: 'seed-user-1',
-      creatorName: 'Maya',
-      tags: ['Coffee Chats', 'Brunch'],
-      likedBy: [],
-      likesCount: 0,
-      interestedUsers: [],
-      createdAt: new Date()
-    },
-    {
-      activity: 'Tennis Match',
-      location: { name: 'Hyde Park Courts', latitude: 51.5079, longitude: -0.1657 },
-      startTime: new Date(Date.now() + 1000 * 60 * 90),
-      isUrgent: false,
-      creatorId: 'seed-user-2',
-      creatorName: 'Alex',
-      tags: ['Tennis', 'Running'],
-      likedBy: [],
-      likesCount: 0,
-      interestedUsers: [],
-      createdAt: new Date()
-    },
-    {
-      activity: 'Dinner Tonight',
-      location: { name: 'Southbank Kitchen', latitude: 51.5061, longitude: -0.1141 },
-      startTime: new Date(Date.now() + 1000 * 60 * 180),
-      isUrgent: false,
-      creatorId: 'seed-user-3',
-      creatorName: 'Priya',
-      tags: ['Dinner', 'Live Music'],
-      likedBy: [],
-      likesCount: 0,
-      interestedUsers: [],
-      createdAt: new Date()
-    }
-  ];
+  await setDoc(doc(db, 'users', credential.user.uid), buildProfile(credential.user.uid, displayName));
+  log(`${label}-signup-profile-create`, { uid: credential.user.uid });
 
-  const created = [];
-  for (const activity of seedActivities) {
-    const ref = await addDoc(collection(db, 'posts'), activity);
-    created.push({ id: ref.id, ...activity });
-  }
+  await signOut(auth);
+  await signInWithEmailAndPassword(auth, email, password);
+  log(`${label}-login`, { uid: credential.user.uid });
 
-  return created.map((activity) => ({
-    ...activity,
-    distanceKm: distanceKm(baseLocation, activity.location)
-  }));
+  return {
+    email,
+    password,
+    uid: credential.user.uid,
+    displayName
+  };
 };
 
 const run = async () => {
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db = getFirestore(app);
-  const email = `codex.${Date.now()}@example.com`;
-  const password = 'TestPass123!';
 
-  const userCredential = await createUserWithEmailAndPassword(auth, email, password);
-  console.log(
-    JSON.stringify(
-      {
-        stage: 'auth-created',
-        email,
-        uid: userCredential.user.uid
-      },
-      null,
-      2
-    )
-  );
+  const host = await createSmokeUser(auth, db, 'host');
+  const guest = await createSmokeUser(auth, db, 'guest');
 
-  await setDoc(
-    doc(db, 'users', userCredential.user.uid),
-    {
-      uid: userCredential.user.uid,
-      email,
-      displayName: 'Codex Test User',
-      bio: 'Always up for coffee, tennis, and spontaneous dinner plans.',
-      photoUrl:
-        'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=400&q=80',
-      favoriteActivities: ['Coffee Chats', 'Tennis', 'Dinner'],
-      location: { latitude: 51.5074, longitude: -0.1278 },
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp()
+  await signInWithEmailAndPassword(auth, host.email, host.password);
+
+  const activityRef = await addDoc(collection(db, 'posts'), {
+    activity: 'Coffee Chats',
+    location: {
+      name: 'RC1 Test Cafe',
+      latitude: 51.51,
+      longitude: -0.13
     },
-    { merge: true }
-  );
+    startTime: new Date(Date.now() + 30 * 60 * 1000),
+    availableUntil: new Date(Date.now() + 90 * 60 * 1000),
+    isUrgent: true,
+    createdAt: serverTimestamp(),
+    creatorId: host.uid,
+    creatorName: host.displayName,
+    creatorPhotoUrl: '',
+    tags: ['coffee chats'],
+    likedBy: [],
+    likesCount: 0,
+    interestedUsers: [],
+    interestedCount: 0
+  });
+  log('activity-create', { activityId: activityRef.id });
 
-  console.log(
-    JSON.stringify(
-      {
-        stage: 'profile-saved',
-        uid: userCredential.user.uid
-      },
-      null,
-      2
-    )
-  );
+  await signInWithEmailAndPassword(auth, guest.email, guest.password);
+  await updateDoc(doc(db, 'users', guest.uid), {
+    bio: 'Updated during RC1 validation.',
+    updatedAt: serverTimestamp()
+  });
+  log('profile-update', { uid: guest.uid });
 
-  await signInWithEmailAndPassword(auth, email, password);
+  await updateDoc(doc(db, 'posts', activityRef.id), {
+    interestedUsers: arrayUnion(guest.uid),
+    interestedCount: increment(1)
+  });
+  log('activity-join', { activityId: activityRef.id, uid: guest.uid });
 
-  let posts = await getDocs(query(collection(db, 'posts'), orderBy('createdAt', 'desc')));
-  let activities = posts.docs.map((item) => ({ id: item.id, ...item.data() }));
+  const conversationId = `rc1_${activityRef.id}_${guest.uid}`.replace(/[^A-Za-z0-9_-]/g, '_');
+  await setDoc(doc(db, 'conversations', conversationId), {
+    activityId: activityRef.id,
+    activity: 'Coffee Chats',
+    participantIds: [host.uid, guest.uid],
+    participantNames: {
+      [host.uid]: host.displayName,
+      [guest.uid]: guest.displayName
+    },
+    createdAt: serverTimestamp(),
+    updatedAt: serverTimestamp(),
+    lastMessage: 'RC1 plan chat opened.',
+    lastMessageAt: serverTimestamp()
+  });
+  log('conversation-create', { conversationId });
 
-  if (activities.length === 0) {
-    activities = await ensureSeedActivities(db);
-  }
+  await addDoc(collection(db, 'conversations', conversationId, 'messages'), {
+    senderId: guest.uid,
+    senderName: guest.displayName,
+    text: 'RC1 validation message.',
+    createdAt: serverTimestamp()
+  });
+  await updateDoc(doc(db, 'conversations', conversationId), {
+    updatedAt: serverTimestamp(),
+    lastMessage: 'RC1 validation message.',
+    lastMessageAt: serverTimestamp()
+  });
+  log('message-send', { conversationId });
 
-  const userLocation = { latitude: 51.5074, longitude: -0.1278 };
-  const nearbyActivities = activities
-    .map((activity) => ({
-      id: activity.id,
-      activity: activity.activity,
-      creatorName: activity.creatorName,
-      locationName: activity.location?.name || '',
-      distanceKm: distanceKm(userLocation, activity.location)
-    }))
-    .filter((activity) => typeof activity.distanceKm === 'number' && activity.distanceKm <= 10);
+  const messages = await getDocs(query(collection(db, 'conversations', conversationId, 'messages'), orderBy('createdAt', 'asc')));
+  log('message-read', { count: messages.size });
 
-  console.log(
-    JSON.stringify(
-      {
-        stage: 'activities-ready',
-        activitiesRead: activities.length,
-        nearbyActivities
-      },
-      null,
-      2
-    )
-  );
+  await addDoc(collection(db, 'reports'), {
+    reporterId: guest.uid,
+    targetType: 'post',
+    targetId: activityRef.id,
+    reason: 'RC1 validation report for activity.',
+    createdAt: serverTimestamp(),
+    status: 'open'
+  });
+  await addDoc(collection(db, 'reports'), {
+    reporterId: guest.uid,
+    targetType: 'user',
+    targetId: host.uid,
+    reason: 'RC1 validation report for user.',
+    createdAt: serverTimestamp(),
+    status: 'open'
+  });
+  log('reports-create');
+
+  await setDoc(doc(db, 'blocks', `${guest.uid}_${host.uid}`), {
+    ownerId: guest.uid,
+    blockedUserId: host.uid,
+    createdAt: serverTimestamp()
+  });
+  log('block-create');
+
+  const conversationSnapshot = await getDoc(doc(db, 'conversations', conversationId));
+  const activitySnapshot = await getDoc(doc(db, 'posts', activityRef.id));
+  const profileSnapshot = await getDoc(doc(db, 'users', guest.uid));
+
+  log('readback', {
+    conversationExists: conversationSnapshot.exists(),
+    activityJoined: activitySnapshot.data()?.interestedUsers?.includes(guest.uid) || false,
+    profileUpdated: profileSnapshot.data()?.bio === 'Updated during RC1 validation.'
+  });
+
+  await signOut(auth);
+  log('logout');
 };
 
 run().catch((error) => {

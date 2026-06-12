@@ -84,7 +84,7 @@ describe('fetchActivities', () => {
           id: 'post-1',
           data: () => ({
             activity: 'Coffee',
-            creatorName: 'Jonas'
+            creatorName: 'Host User'
           })
         }
       ]
@@ -94,7 +94,7 @@ describe('fetchActivities', () => {
       {
         id: 'post-1',
         activity: 'Coffee',
-        creatorName: 'Jonas'
+        creatorName: 'Host User'
       }
     ]);
   });
