@@ -94,10 +94,8 @@ service cloud.firestore {
     function validUserCreate(uid) {
       return isSelf(uid)
         && request.resource.data.uid == uid
-        && request.resource.data.email is string
         && request.resource.data.keys().hasOnly([
           'uid',
-          'email',
           'displayName',
           'bio',
           'photoUrl',
@@ -210,9 +208,70 @@ service cloud.firestore {
         && added.size() + removed.size() == 1;
     }
 
+    function isConversationParticipant(conversationId) {
+      return signedIn()
+        && get(/databases/$(database)/documents/conversations/$(conversationId)).data.participantIds.hasAny([request.auth.uid]);
+    }
+
+    function validConversationCreate() {
+      return signedIn()
+        && request.resource.data.keys().hasOnly([
+          'activityId',
+          'activity',
+          'participantIds',
+          'participantNames',
+          'createdAt',
+          'updatedAt',
+          'lastMessage',
+          'lastMessageAt'
+        ])
+        && isNonEmptyString(request.resource.data.activityId, 160)
+        && isNonEmptyString(request.resource.data.activity, 80)
+        && request.resource.data.participantIds is list
+        && request.resource.data.participantIds.size() >= 2
+        && request.resource.data.participantIds.size() <= 20
+        && request.resource.data.participantIds.hasAny([request.auth.uid])
+        && request.resource.data.participantNames is map
+        && request.resource.data.createdAt is timestamp
+        && request.resource.data.updatedAt is timestamp
+        && isOptionalString(request.resource.data.lastMessage, 500)
+        && request.resource.data.lastMessageAt is timestamp;
+    }
+
+    function validConversationUpdate(conversationId) {
+      return isConversationParticipant(conversationId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'updatedAt',
+          'lastMessage',
+          'lastMessageAt'
+        ])
+        && request.resource.data.activityId == resource.data.activityId
+        && request.resource.data.activity == resource.data.activity
+        && request.resource.data.participantIds == resource.data.participantIds
+        && request.resource.data.participantNames == resource.data.participantNames
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.updatedAt is timestamp
+        && isOptionalString(request.resource.data.lastMessage, 500)
+        && request.resource.data.lastMessageAt is timestamp;
+    }
+
+    function validMessageCreate(conversationId) {
+      return isConversationParticipant(conversationId)
+        && request.resource.data.keys().hasOnly([
+          'senderId',
+          'senderName',
+          'text',
+          'createdAt'
+        ])
+        && request.resource.data.senderId == request.auth.uid
+        && isNonEmptyString(request.resource.data.senderName, 80)
+        && isNonEmptyString(request.resource.data.text, 500)
+        && request.resource.data.createdAt is timestamp;
+    }
+
     match /users/{uid} {
-      // Current app still requires signed-in discovery reads over users.
-      // Before launch, split exact location/email into private docs and query only public profiles.
+      // Public discovery docs must not contain private auth fields such as email.
+      // Location is rounded by the client until a dedicated geospatial backend is introduced.
       allow read: if signedIn();
       allow create: if validUserCreate(uid);
       allow update: if validUserUpdate(uid);
@@ -250,6 +309,19 @@ service cloud.firestore {
         && request.resource.data.ownerId == request.auth.uid
         && isNonEmptyString(request.resource.data.blockedUserId, 160);
       allow delete: if signedIn() && resource.data.ownerId == request.auth.uid;
+    }
+
+    match /conversations/{conversationId} {
+      allow read: if isConversationParticipant(conversationId);
+      allow create: if validConversationCreate();
+      allow update: if validConversationUpdate(conversationId);
+      allow delete: if false;
+
+      match /messages/{messageId} {
+        allow read: if isConversationParticipant(conversationId);
+        allow create: if validMessageCreate(conversationId);
+        allow update, delete: if false;
+      }
     }
 
     match /{document=**} {

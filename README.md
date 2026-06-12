@@ -88,9 +88,12 @@ exp://192.168.0.88:8083
 cd C:\Users\alish\workspace\rufree\backend
 npm install
 npm audit --audit-level=moderate
+npm run audit:public-profiles
 ```
 
 There is no Cloud Functions implementation yet. Add functions under `backend/functions/` when server-side behavior is needed.
+
+`npm run audit:public-profiles` is a dry run that requires Firebase Admin credentials. `npm run cleanup:public-profiles` removes legacy public email fields and rounds legacy public coordinates, and should only be run after backup and approval.
 
 ## Firebase
 
@@ -99,6 +102,22 @@ Firestore configuration is tracked in:
 - `firebase.json`
 - `firestore.rules`
 - `firestore.indexes.json`
+
+RC1 Firebase validation depends on Firebase Auth and Firestore only. Firebase Storage is wired in the frontend for future media/file uploads, but Storage is a future capability and is not required for RC1 approval.
+
+RC1 Firebase validation checklist:
+
+- User sign up.
+- User login.
+- User logout.
+- Profile create/read/update.
+- Activity create/read/update/join.
+- Conversation creation.
+- Message send/read.
+- Report user/activity.
+- Block user.
+- Firestore security rules.
+- Firestore indexes.
 
 Deploy rules and indexes from the repo root after confirming the Firebase project target:
 
@@ -110,12 +129,14 @@ Security notes:
 
 - Users can create/update/delete only their own profile.
 - Signed-in users can read user profiles and posts for discovery.
+- Public user profile writes do not include email.
+- Public profile/activity locations are rounded before being stored for discovery.
 - Post creation validates creator ownership, allowed fields, location shape, timestamps, tags, and initial counters.
 - Post updates are limited to one-user reaction/interested toggles.
 - Reports can be created by signed-in users but are not readable from the client.
 - Blocks are owner-scoped.
 
-Before launch, split private user data such as exact location/email into private documents and expose only public profile fields for discovery.
+Before launch, audit existing Firestore user documents for legacy email/exact-location fields and clean them after taking a backup. For dense production markets, replace bounded client-side discovery reads with geospatial/backend-filtered queries.
 
 ## Verification
 
@@ -136,7 +157,7 @@ npm audit --audit-level=moderate
 
 Expected current results:
 
-- Jest: 14 suites / 37 tests passing.
+- Jest: 16 suites / 43 tests passing.
 - Frontend audit: 0 vulnerabilities.
 - Backend audit: 0 vulnerabilities.
 - Expo Doctor: 18/18 checks passing.

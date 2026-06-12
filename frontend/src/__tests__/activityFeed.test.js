@@ -14,6 +14,7 @@ import {
   doc,
   getDocs,
   increment,
+  limit,
   orderBy,
   query,
   updateDoc
@@ -27,6 +28,7 @@ jest.mock('@firebase/firestore', () => ({
   doc: jest.fn(() => 'post-doc'),
   getDocs: jest.fn(),
   increment: jest.fn((value) => ({ type: 'increment', value })),
+  limit: jest.fn((value) => ({ type: 'limit', value })),
   orderBy: jest.fn(() => 'order-by-created-at'),
   query: jest.fn(() => 'posts-query'),
   updateDoc: jest.fn()
@@ -68,7 +70,11 @@ describe('fetchActivities', () => {
     await expect(fetchActivities({ name: 'db-instance' })).resolves.toEqual([]);
     expect(collection).toHaveBeenCalledWith({ name: 'db-instance' }, 'posts');
     expect(orderBy).toHaveBeenCalledWith('createdAt', 'desc');
-    expect(query).toHaveBeenCalledWith('posts-collection', 'order-by-created-at');
+    expect(limit).toHaveBeenCalledWith(50);
+    expect(query).toHaveBeenCalledWith('posts-collection', 'order-by-created-at', {
+      type: 'limit',
+      value: 50
+    });
   });
 
   it('maps Firestore docs into activity objects', async () => {

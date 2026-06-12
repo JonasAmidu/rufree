@@ -47,6 +47,75 @@ export const buildMessageMetrics = (threads = []) => ({
   activityMatches: new Set(threads.map((thread) => thread.activity).filter(Boolean)).size
 });
 
+const toDate = (value) => {
+  if (!value) {
+    return null;
+  }
+
+  if (typeof value.toDate === 'function') {
+    return value.toDate();
+  }
+
+  if (value instanceof Date) {
+    return value;
+  }
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+};
+
+const formatWindowLabel = (value) => {
+  const date = toDate(value);
+  return date ? date.toLocaleString() : '';
+};
+
+export const buildThreadsFromActivities = (activities = [], user = null) =>
+  activities
+    .filter((activity) => {
+      const interestedUsers = Array.isArray(activity.interestedUsers) ? activity.interestedUsers : [];
+      return activity.creatorId === user?.uid || interestedUsers.includes(user?.uid);
+    })
+    .map((activity) => {
+      const isHost = activity.creatorId === user?.uid;
+      const interestedUsers = Array.isArray(activity.interestedUsers) ? activity.interestedUsers : [];
+      const participantCount = new Set([activity.creatorId, ...interestedUsers].filter(Boolean)).size;
+
+      return {
+        id: activity.id,
+        name: isHost ? `${participantCount} plan participant${participantCount === 1 ? '' : 's'}` : activity.creatorName || 'RuFree user',
+        activity: activity.activity || 'Nearby activity',
+        availableNow: Boolean(activity.availableNow || activity.isUrgent),
+        distanceLabel: activity.distanceLabel || 'Nearby',
+        lastActiveLabel: 'Live plan',
+        lastMessage: isHost
+          ? 'You are hosting this plan. Check who has joined and keep the meetup details clear.'
+          : `You joined ${activity.creatorName || 'a RuFree user'} for this plan. Confirm details before heading out.`,
+        nextWindow: formatWindowLabel(activity.startTime),
+        unreadCount: 0
+      };
+    });
+
+export const buildThreadsFromConversations = (conversations = [], user = null) =>
+  conversations.map((conversation) => {
+    const participantNames = conversation.participantNames || {};
+    const otherNames = Object.entries(participantNames)
+      .filter(([participantId]) => participantId !== user?.uid)
+      .map(([, name]) => name)
+      .filter(Boolean);
+
+    return {
+      id: conversation.id,
+      name: otherNames.join(', ') || conversation.activity || 'RuFree plan',
+      activity: conversation.activity || 'Nearby activity',
+      availableNow: true,
+      distanceLabel: 'Plan chat',
+      lastActiveLabel: conversation.lastMessageAt ? 'Recent' : 'New',
+      lastMessage: conversation.lastMessage || 'No messages yet. Keep the plan clear and lightweight.',
+      nextWindow: '',
+      unreadCount: 0
+    };
+  });
+
 const MessagesScreen = ({
   threads = [],
   onOpenThread,

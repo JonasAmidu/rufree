@@ -30,8 +30,12 @@ const App = () => {
 
   useEffect(() => {
     let unsubscribeProfile = null;
+    const authFallback = setTimeout(() => {
+      setLoading(false);
+    }, 6000);
 
     const unsubscribeAuth = onAuthStateChanged(auth, (userAuth) => {
+      clearTimeout(authFallback);
       setUser(userAuth);
 
       if (unsubscribeProfile) {
@@ -65,6 +69,7 @@ const App = () => {
       if (unsubscribeProfile) {
         unsubscribeProfile();
       }
+      clearTimeout(authFallback);
       unsubscribeAuth();
     };
   }, []);

@@ -88,7 +88,6 @@ describe('AuthScreen', () => {
     expect(serverTimestamp).toHaveBeenCalled();
     expect(setDoc).toHaveBeenCalledWith('user-doc', {
       uid: 'user-123',
-      email: 'codex@example.com',
       displayName: 'Codex User',
       createdAt: 'server-timestamp'
     });

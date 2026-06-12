@@ -3,6 +3,8 @@
   "version": "1.0.0",
   "main": "index.js",
   "scripts": {
+    "audit:public-profiles": "node scripts/audit-public-profiles.cjs",
+    "cleanup:public-profiles": "node scripts/audit-public-profiles.cjs --apply --confirm-cleanup",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {

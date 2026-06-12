@@ -38,7 +38,6 @@ const AuthScreen = () => {
 
         await setDoc(doc(db, 'users', userCredential.user.uid), {
           uid: userCredential.user.uid,
-          email: email.trim(),
           displayName: displayName.trim(),
           createdAt: serverTimestamp()
         });

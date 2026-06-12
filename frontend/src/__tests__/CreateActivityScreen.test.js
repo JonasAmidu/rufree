@@ -36,7 +36,7 @@ describe('CreateActivityScreen', () => {
         startTime: new Date('2026-05-08T18:30:00.000Z')
       },
       {
-        currentLocation: { latitude: 51.5, longitude: -0.12 },
+        currentLocation: { latitude: 51.5007, longitude: -0.1246 },
         creatorProfile: { displayName: 'Jonas' },
         user: { uid: 'user-1', email: 'jonas@example.com' }
       }
@@ -52,8 +52,8 @@ describe('CreateActivityScreen', () => {
       startTime: new Date('2026-05-08T18:30:00.000Z'),
       location: {
         name: 'Soho Coffee House',
-        latitude: 51.5,
-        longitude: -0.12
+        latitude: 51.501,
+        longitude: -0.125
       },
       tags: ['coffee chats']
     });

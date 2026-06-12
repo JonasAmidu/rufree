@@ -19,7 +19,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { signOut } from '@firebase/auth';
 import ActivityComposer from '../components/activity/ActivityComposer';
 import EditProfileScreen from './EditProfileScreen';
-import { collection, doc, onSnapshot, serverTimestamp, setDoc } from '@firebase/firestore';
+import { collection, doc, limit, onSnapshot, query, serverTimestamp, setDoc } from '@firebase/firestore';
 import { auth, db } from '../firebase/config';
 import {
   calculateDistanceKm,
@@ -32,6 +32,8 @@ import {
   subscribeToActivities,
   unlikeActivity
 } from '../utils/activityFeed';
+import { toPublicLocation } from '../utils/privacy';
+import { blockUser, reportTarget } from '../utils/safetyActions';
 
 const RADIUS_OPTIONS = [2, 5, 10, 25];
 const mapVisual = require('../../assets/nearby-map-visual.png');
@@ -275,10 +277,11 @@ const HomeScreen = ({ user, userProfile }) => {
         accuracy: Location.Accuracy.Balanced
       });
 
-      const location = {
+      const deviceLocation = {
         latitude: current.coords.latitude,
         longitude: current.coords.longitude
       };
+      const location = toPublicLocation(deviceLocation);
 
       setUserLocation(location);
       setLocationMessage(`Showing people and activities within ${radiusKm} km.`);
@@ -331,7 +334,7 @@ const HomeScreen = ({ user, userProfile }) => {
     );
 
     const unsubscribeUsers = onSnapshot(
-      collection(db, 'users'),
+      query(collection(db, 'users'), limit(100)),
       (snapshot) => {
         const users = snapshot.docs.map((item) => ({
           id: item.id,
@@ -429,7 +432,7 @@ const HomeScreen = ({ user, userProfile }) => {
         activity: values.activity.trim(),
         location: {
           name: values.locationName.trim(),
-          ...(userLocation || userProfile?.location || {})
+          ...(toPublicLocation(userLocation || userProfile?.location) || {})
         },
         startTime: values.startTime || new Date(),
         availableUntil: values.isUrgent ? new Date(Date.now() + 60 * 60 * 1000) : null,
@@ -531,6 +534,50 @@ const HomeScreen = ({ user, userProfile }) => {
     }
   };
 
+  const handleReportActivity = async (activity) => {
+    try {
+      await reportTarget(db, {
+        reporterId: user.uid,
+        targetType: 'post',
+        targetId: activity.id,
+        reason: `Reported activity: ${activity.activity || 'Untitled activity'}`
+      });
+      Alert.alert('Report sent', 'Thanks. We will review this activity.');
+    } catch (error) {
+      console.error('Report activity error', error);
+      Alert.alert('Report failed', 'We could not send that report right now.');
+    }
+  };
+
+  const handleReportUser = async (person) => {
+    try {
+      await reportTarget(db, {
+        reporterId: user.uid,
+        targetType: 'user',
+        targetId: person.uid,
+        reason: `Reported profile: ${person.displayName || 'RuFree user'}`
+      });
+      Alert.alert('Report sent', 'Thanks. We will review this profile.');
+    } catch (error) {
+      console.error('Report user error', error);
+      Alert.alert('Report failed', 'We could not send that report right now.');
+    }
+  };
+
+  const handleBlockUser = async (person) => {
+    try {
+      await blockUser(db, {
+        ownerId: user.uid,
+        blockedUserId: person.uid
+      });
+      setAllUsers((current) => current.filter((item) => item.uid !== person.uid));
+      Alert.alert('Profile blocked', `${person.displayName || 'This profile'} will be hidden from your nearby list.`);
+    } catch (error) {
+      console.error('Block user error', error);
+      Alert.alert('Block failed', 'We could not block that profile right now.');
+    }
+  };
+
   const renderNearbyUser = (person) => (
     <View key={person.uid} style={styles.nearbyCard}>
       <View style={styles.nearbyVisual}>
@@ -555,6 +602,14 @@ const HomeScreen = ({ user, userProfile }) => {
             <Text style={styles.matchTagText}>{interest}</Text>
           </View>
         ))}
+      </View>
+      <View style={styles.safetyActionRow}>
+        <TouchableOpacity style={styles.safetyLink} onPress={() => handleReportUser(person)}>
+          <Text style={styles.safetyLinkText}>Report</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.safetyLink} onPress={() => handleBlockUser(person)}>
+          <Text style={styles.safetyLinkText}>Block</Text>
+        </TouchableOpacity>
       </View>
     </View>
   );
@@ -658,6 +713,9 @@ const HomeScreen = ({ user, userProfile }) => {
             <Text style={styles.participationNames}>{participantPreview.join(' • ')}</Text>
           ) : null}
         </View>
+        <TouchableOpacity style={styles.reportActivityButton} onPress={() => handleReportActivity(activity)}>
+          <Text style={styles.reportActivityButtonText}>Report activity</Text>
+        </TouchableOpacity>
       </View>
     );
   };
@@ -1507,6 +1565,23 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700'
   },
+  safetyActionRow: {
+    flexDirection: 'row',
+    marginTop: 8
+  },
+  safetyLink: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#D6D0C8',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    marginRight: 8
+  },
+  safetyLinkText: {
+    color: '#73544A',
+    fontSize: 12,
+    fontWeight: '800'
+  },
   emptyNearbyCard: {
     backgroundColor: '#FFF6ED',
     borderRadius: 24,
@@ -1691,6 +1766,20 @@ const styles = StyleSheet.create({
     color: '#65717A',
     fontSize: 13,
     marginTop: 4
+  },
+  reportActivityButton: {
+    alignSelf: 'flex-start',
+    borderColor: '#E1D8CD',
+    borderRadius: 999,
+    borderWidth: 1,
+    marginTop: 14,
+    paddingHorizontal: 12,
+    paddingVertical: 8
+  },
+  reportActivityButtonText: {
+    color: '#73544A',
+    fontSize: 12,
+    fontWeight: '800'
   },
   emptyFeedCard: {
     backgroundColor: '#FFF6ED',

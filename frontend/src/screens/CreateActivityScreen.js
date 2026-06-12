@@ -13,6 +13,7 @@ import AppBackground from '../components/AppBackground';
 import ActivityComposer from '../components/activity/ActivityComposer';
 import { auth, db } from '../firebase/config';
 import { createActivity } from '../utils/activityFeed';
+import { toPublicLocation } from '../utils/privacy';
 
 const getCreatorName = (user, creatorProfile) => {
   if (creatorProfile?.displayName) {
@@ -30,21 +31,30 @@ const getCreatorName = (user, creatorProfile) => {
   return 'RuFree user';
 };
 
-export const buildCreateActivityPayload = (values, { currentLocation, creatorProfile, user }) => ({
-  activity: values.activity,
-  creatorId: user?.uid || auth.currentUser?.uid || 'anonymous',
-  creatorName: getCreatorName(user || auth.currentUser, creatorProfile),
-  createdAt: serverTimestamp(),
-  isUrgent: values.isUrgent,
-  availableUntil: values.isUrgent ? new Date(Date.now() + 60 * 60 * 1000) : null,
-  location: {
-    name: values.locationName,
-    latitude: currentLocation?.latitude ?? creatorProfile?.location?.latitude ?? null,
-    longitude: currentLocation?.longitude ?? creatorProfile?.location?.longitude ?? null
-  },
-  startTime: values.startTime || new Date(),
-  tags: [values.activity.toLowerCase()]
-});
+export const buildCreateActivityPayload = (values, { currentLocation, creatorProfile, user }) => {
+  const creatorId = user?.uid || auth.currentUser?.uid;
+  const publicLocation = toPublicLocation(currentLocation || creatorProfile?.location);
+
+  if (!creatorId) {
+    throw new Error('Sign in again before posting an activity.');
+  }
+
+  return {
+    activity: values.activity,
+    creatorId,
+    creatorName: getCreatorName(user || auth.currentUser, creatorProfile),
+    createdAt: serverTimestamp(),
+    isUrgent: values.isUrgent,
+    availableUntil: values.isUrgent ? new Date(Date.now() + 60 * 60 * 1000) : null,
+    location: {
+      name: values.locationName,
+      latitude: publicLocation?.latitude ?? null,
+      longitude: publicLocation?.longitude ?? null
+    },
+    startTime: values.startTime || new Date(),
+    tags: [values.activity.toLowerCase()]
+  };
+};
 
 const CreateActivityScreen = ({
   user = auth.currentUser,
@@ -56,13 +66,13 @@ const CreateActivityScreen = ({
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (values) => {
-    const payload = buildCreateActivityPayload(values, {
-      currentLocation,
-      creatorProfile,
-      user
-    });
-
     try {
+      const payload = buildCreateActivityPayload(values, {
+        currentLocation,
+        creatorProfile,
+        user
+      });
+
       setSubmitting(true);
       if (onSubmit) {
         await onSubmit(payload);

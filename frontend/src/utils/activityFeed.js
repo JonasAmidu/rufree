@@ -6,6 +6,7 @@ import {
   doc,
   getDocs,
   increment,
+  limit,
   onSnapshot,
   orderBy,
   query,
@@ -163,8 +164,8 @@ export const filterActivities = (
   });
 };
 
-export const fetchActivities = async (db) => {
-  const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+export const fetchActivities = async (db, maxResults = 50) => {
+  const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(maxResults));
   const postsSnapshot = await getDocs(postsQuery);
 
   return postsSnapshot.docs.map((item) => ({
@@ -173,8 +174,8 @@ export const fetchActivities = async (db) => {
   }));
 };
 
-export const subscribeToActivities = (db, onUpdate, onError) => {
-  const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'));
+export const subscribeToActivities = (db, onUpdate, onError, maxResults = 50) => {
+  const postsQuery = query(collection(db, 'posts'), orderBy('createdAt', 'desc'), limit(maxResults));
 
   return onSnapshot(
     postsQuery,

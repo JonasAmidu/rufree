@@ -28,7 +28,6 @@ const EditProfileScreen = ({ user, initialProfile, onProfileSaved, onCancel }) =
 
     const profilePayload = {
       uid: user.uid,
-      email: user.email || initialProfile?.email || '',
       displayName: values.displayName,
       bio: values.bio,
       photoUrl: values.photoUrl,

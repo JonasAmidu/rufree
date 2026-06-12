@@ -58,7 +58,6 @@ const ProfileSetupScreen = ({ user, initialProfile, onProfileSaved }) => {
 
     const profilePayload = {
       uid: user.uid,
-      email: user.email,
       displayName,
       bio: bio.trim(),
       photoUrl: photoUrl.trim(),

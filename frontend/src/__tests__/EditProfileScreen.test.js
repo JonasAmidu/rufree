@@ -56,7 +56,6 @@ describe('EditProfileScreen', () => {
       'user-doc',
       {
         uid: 'user-123',
-        email: 'maya@example.com',
         displayName: 'Maya',
         bio: 'Coffee, walks, and tennis',
         photoUrl: 'https://example.com/new.jpg',
