@@ -3,6 +3,9 @@
     "name": "RuFree",
     "slug": "rufree-frontend",
     "version": "1.0.0",
+    "experiments": {
+      "baseUrl": "/rufree"
+    },
     "platforms": [
       "ios",
       "android",
